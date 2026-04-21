@@ -23,11 +23,22 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// 🎨 색상 정확도: Three.js editor와 동일한 렌더링 결과를 얻기 위함
+//    (GLTF 텍스처가 sRGB 공간인데 렌더러가 Linear로 해석하면 색이 어두워짐)
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
 container.appendChild(renderer.domElement);
 
 // 조명
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// 1) Ambient: 전체적으로 살짝 밝게 (PBR 캐릭터의 그림자 쪽이 완전히 검어지지 않게)
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
 scene.add(ambientLight);
+// 2) Hemisphere: 하늘(위)과 바닥(아래)에서 각각 색상 입힘 — PBR 캐릭터에 자연스러운 색감 부여
+const hemiLight = new THREE.HemisphereLight(0xfff4e0, 0xa0c8a0, 0.6);
+hemiLight.position.set(0, 20, 0);
+scene.add(hemiLight);
+// 3) 태양광 (Directional): 그림자 투영용
 const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
 sunLight.position.set(10, 20, 5);
 sunLight.castShadow = true;
@@ -346,23 +357,32 @@ function attachGltfToGroup(group, gltfScene, animations) {
   
   console.log(`[gltf] model bbox after scale: min.y=${scaledBox.min.y.toFixed(2)} max.y=${scaledBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)}`);
   
-  // 그림자 + SkinnedMesh 관련 흔한 문제 방어
+  // 그림자 + SkinnedMesh 관련 흔한 문제 방어 + 머티리얼 밝기 조정
   modelRoot.traverse(obj => {
     if (obj.isMesh) {
       obj.castShadow = true;
       obj.receiveShadow = true;
-      // 1) 투명도 강제 불투명
       if (obj.material) {
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         mats.forEach(m => {
+          // 1) 투명도 강제 불투명
           if (m.transparent && m.opacity < 0.1) m.opacity = 1;
           m.transparent = false;
-          // 양면 렌더링 (face가 뒤집혀 있어도 보이게)
+          // 2) 양면 렌더링 (face가 뒤집혀 있어도 보이게)
           m.side = THREE.DoubleSide;
+          // 3) 🔧 PBR 머티리얼 밝기 보정
+          if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
+            m.metalness = 0;
+            m.roughness = Math.max(m.roughness ?? 0.5, 0.7);
+          }
+          // 4) 🎨 텍스처가 있으면 sRGB 인코딩으로 설정 (색상 정확도)
+          //    Three.js r128에서 GLTF 텍스처 자동 sRGB 설정이 누락되는 케이스 대응
+          if (m.map) m.map.encoding = THREE.sRGBEncoding;
+          if (m.emissiveMap) m.emissiveMap.encoding = THREE.sRGBEncoding;
           m.needsUpdate = true;
         });
       }
-      // 2) SkinnedMesh의 frustumCulling 끄기 (애니메이션으로 bbox 바뀌는데 Three.js가 잘못 컬링하는 문제 방어)
+      // SkinnedMesh의 frustumCulling 끄기
       if (obj.isSkinnedMesh) {
         obj.frustumCulled = false;
       }
@@ -370,28 +390,7 @@ function attachGltfToGroup(group, gltfScene, animations) {
   });
   
   group.add(modelRoot);
-  
-  // 🔍 디버그: 모델 내부 구조 확인
-  let meshCount = 0;
-  let skinnedMeshCount = 0;
-  let materialInfo = [];
-  modelRoot.traverse(obj => {
-    if (obj.isSkinnedMesh) {
-      skinnedMeshCount++;
-      meshCount++;
-      const mat = obj.material;
-      const matName = Array.isArray(mat) ? mat.map(m => m.type).join(',') : mat.type;
-      const visible = obj.visible;
-      const frustumCulled = obj.frustumCulled;
-      materialInfo.push(`Skinned:${obj.name || '?'} mat=${matName} visible=${visible} frustumCulled=${frustumCulled}`);
-    } else if (obj.isMesh) {
-      meshCount++;
-      const mat = obj.material;
-      const matName = Array.isArray(mat) ? mat.map(m => m.type).join(',') : mat.type;
-      materialInfo.push(`Mesh:${obj.name || '?'} mat=${matName} visible=${obj.visible}`);
-    }
-  });
-  console.log(`[gltf STRUCTURE] ${meshCount} meshes (${skinnedMeshCount} skinned). Details:`, materialInfo);
+  modelRoot.userData.isGltf = true;
   
   // 애니메이션이 있으면 믹서 생성 후 기본 클립 재생
   let mixer = null;
@@ -415,18 +414,6 @@ function attachGltfToGroup(group, gltfScene, animations) {
       // bbox 기준으로 발이 y=0에 오도록 정렬
       modelRoot.position.y = -animatedBox.min.y;
       console.log(`[gltf] animated bbox: min.y=${animatedBox.min.y.toFixed(2)} max.y=${animatedBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)} (clip: ${pickClip.name})`);
-      
-      // 🔧 디버그: 실제 그룹/모델의 월드 위치 확인
-      setTimeout(() => {
-        if (group.parent) {
-          const modelWorldPos = new THREE.Vector3();
-          modelRoot.getWorldPosition(modelWorldPos);
-          const groupWorldPos = new THREE.Vector3();
-          group.getWorldPosition(groupWorldPos);
-          const worldBox = new THREE.Box3().setFromObject(modelRoot);
-          console.log(`[gltf DEBUG] group.pos=(${groupWorldPos.x.toFixed(2)}, ${groupWorldPos.y.toFixed(2)}, ${groupWorldPos.z.toFixed(2)}) modelRoot.worldPos=(${modelWorldPos.x.toFixed(2)}, ${modelWorldPos.y.toFixed(2)}, ${modelWorldPos.z.toFixed(2)}) worldBox=[${worldBox.min.y.toFixed(2)} ~ ${worldBox.max.y.toFixed(2)}]`);
-        }
-      }, 500);
     }
   }
   return { modelRoot, mixer };
@@ -569,6 +556,21 @@ function createNpcMesh(animal, npcId) {
   group.userData.fallbackMeshes = fallbackMeshes;
   // 각 폴백 메시에도 플래그 직접 찍기 (userData 덮어써져도 살아남음)
   fallbackMeshes.forEach(m => { m.userData.isFallback = true; });
+  
+  // 시나리오 NPC(GLTF 모델이 있는 NPC)면:
+  // - 프리미티브를 아예 처음부터 숨겨서 깜빡임 방지
+  // - GLTF 로드 실패 시에만 다시 보이게 하는 안전망 추가
+  const hasGltfModel = npcId && NPC_MODEL_MAP[npcId];
+  if (hasGltfModel) {
+    fallbackMeshes.forEach(m => { m.visible = false; });
+    // 3초 타임아웃: GLTF가 그때까지도 로드 안 됐으면 프리미티브 다시 표시
+    setTimeout(() => {
+      if (!group.userData.mixer && !group.children.some(c => c.userData && c.userData.isGltf)) {
+        console.warn(`[gltf] ${npcId} still not loaded after 3s, showing fallback`);
+        fallbackMeshes.forEach(m => { m.visible = true; });
+      }
+    }, 3000);
+  }
   
   // 시나리오 NPC면 GLTF 모델 비동기 로드
   if (npcId) {
