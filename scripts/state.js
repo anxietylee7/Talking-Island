@@ -56,21 +56,19 @@ function resolveCollisions(pos, self) {
   pos.x = Math.max(-19, Math.min(19, pos.x));
   pos.z = Math.max(-19, Math.min(19, pos.z));
   
-  // 1) 정적 장애물 (나무, 건물, 연못)
+  // 1) 정적 장애물 — 건물만 막음 (나무·연못은 통과 허용)
   for (const ob of obstacles) {
-    // 유저는 자기 집 건물 안에 들어갈 수 있어야 하므로 예외
-    // (현재는 "건물 앞에서 클릭하면 내부 씬으로 전환"이라 외부에서 건물 위로 못 올라가게 막는게 맞음)
+    if (ob.type !== 'building') continue;
     const dx = pos.x - ob.x;
     const dz = pos.z - ob.z;
     const dist = Math.hypot(dx, dz);
     const minDist = ob.radius + CHARACTER_RADIUS;
     if (dist < minDist && dist > 0.001) {
-      // 장애물 중심에서 멀어지는 방향으로 밀어내기
+      // 건물 중심에서 멀어지는 방향으로 밀어내기
       const push = (minDist - dist);
       pos.x += (dx / dist) * push;
       pos.z += (dz / dist) * push;
     } else if (dist < 0.001) {
-      // 완전히 겹쳤으면 (거의 발생 안 하지만 안전) 임의 방향으로 밀기
       pos.x += minDist;
     }
   }
