@@ -301,8 +301,104 @@ for (let i = 0; i < 30; i++) {
 // =========================================================
 // NPC 3D 아바타
 // =========================================================
-function createNpcMesh(animal) {
+// GLTF 로더 & 로드 캐시 (같은 모델 여러 번 쓸 때 재사용)
+const gltfLoader = new THREE.GLTFLoader();
+const gltfCache = {}; // { 'chaka': {scene, animations} } 형태
+
+// 시나리오 NPC ID → 모델 파일명 매핑
+const NPC_MODEL_MAP = {
+  'story_chaka': 'models/chaka.gltf',
+  'story_yami': 'models/yami.gltf',
+  'story_bamtol': 'models/bamtol.gltf',
+  'story_luru': 'models/luru.gltf',
+  'story_somi': 'models/somi.gltf',
+};
+
+// 모델의 자동 크기 조정: NPC 메시의 표준 높이는 약 2.0 유닛
+// (기존 프리미티브 머리 끝이 대략 y=1.7~1.8 정도)
+const TARGET_NPC_HEIGHT = 2.0;
+
+// GLTF 씬을 NPC group에 붙이고 크기 자동 조정 + 애니메이션 믹서 반환
+function attachGltfToGroup(group, gltfScene, animations) {
+  // 원본 클론 (같은 모델 여러 인스턴스 위해)
+  const modelRoot = gltfScene.clone(true);
+  
+  // 크기 자동 스케일링: 바운딩박스 계산해서 높이 기준으로 스케일 적용
+  const box = new THREE.Box3().setFromObject(modelRoot);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const scale = size.y > 0.01 ? TARGET_NPC_HEIGHT / size.y : 1;
+  modelRoot.scale.setScalar(scale);
+  
+  // 바닥 정렬: 바운딩박스 최하단이 y=0 되도록
+  const scaledBox = new THREE.Box3().setFromObject(modelRoot);
+  modelRoot.position.y = -scaledBox.min.y;
+  
+  // 그림자
+  modelRoot.traverse(obj => {
+    if (obj.isMesh) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+  
+  group.add(modelRoot);
+  
+  // 애니메이션이 있으면 믹서 생성 후 기본 클립 재생
+  let mixer = null;
+  if (animations && animations.length > 0) {
+    mixer = new THREE.AnimationMixer(modelRoot);
+    // 우선순위: idle > stand > walk > 첫 번째 아무거나
+    const pickClip =
+      animations.find(a => /idle/i.test(a.name)) ||
+      animations.find(a => /stand/i.test(a.name)) ||
+      animations.find(a => /walk/i.test(a.name)) ||
+      animations[0];
+    if (pickClip) {
+      const action = mixer.clipAction(pickClip);
+      action.play();
+    }
+  }
+  return { modelRoot, mixer };
+}
+
+// NPC Group에 GLTF 모델을 비동기 로드 (실패 시 폴백으로 프리미티브 유지)
+function loadGltfForNpc(group, npcId) {
+  const modelPath = NPC_MODEL_MAP[npcId];
+  if (!modelPath) return; // 매핑 없음 (일반 가챠 NPC)
+  
+  // 캐시에 있으면 바로 사용
+  if (gltfCache[npcId]) {
+    const cached = gltfCache[npcId];
+    const { mixer } = attachGltfToGroup(group, cached.scene, cached.animations);
+    group.userData.mixer = mixer;
+    // 폴백 메시 숨기기
+    group.userData.fallbackMeshes?.forEach(m => m.visible = false);
+    return;
+  }
+  
+  gltfLoader.load(
+    modelPath,
+    gltf => {
+      gltfCache[npcId] = { scene: gltf.scene, animations: gltf.animations };
+      const { mixer } = attachGltfToGroup(group, gltf.scene, gltf.animations);
+      group.userData.mixer = mixer;
+      // 로드 완료 후 폴백(기존 프리미티브) 숨기기
+      group.userData.fallbackMeshes?.forEach(m => m.visible = false);
+      console.log(`[gltf] loaded ${modelPath}`, gltf.animations?.length ? `(${gltf.animations.length} animations)` : '(no animations)');
+    },
+    undefined,
+    err => {
+      console.error(`[gltf] failed to load ${modelPath}:`, err);
+      // 실패 시 그대로 두면 프리미티브가 계속 보임 → 자동 폴백 작동
+    }
+  );
+}
+
+function createNpcMesh(animal, npcId) {
   const group = new THREE.Group();
+  const fallbackMeshes = []; // GLTF 로드 성공 시 숨길 프리미티브들
+  
   // 몸통
   const bodyGeo = new THREE.SphereGeometry(0.45, 16, 12);
   const bodyMat = new THREE.MeshStandardMaterial({ color: animal.color });
@@ -311,12 +407,14 @@ function createNpcMesh(animal) {
   body.scale.y = 1.1;
   body.castShadow = true;
   group.add(body);
+  fallbackMeshes.push(body);
   // 머리
   const headGeo = new THREE.SphereGeometry(0.4, 16, 12);
   const head = new THREE.Mesh(headGeo, bodyMat);
   head.position.y = 1.3;
   head.castShadow = true;
   group.add(head);
+  fallbackMeshes.push(head);
   // 눈
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
   const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8);
@@ -325,6 +423,7 @@ function createNpcMesh(animal) {
   const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
   eyeR.position.set(0.15, 1.35, 0.35);
   group.add(eyeL); group.add(eyeR);
+  fallbackMeshes.push(eyeL, eyeR);
   // 볼 홍조
   const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff9ebb, transparent: true, opacity: 0.5 });
   const cheekGeo = new THREE.SphereGeometry(0.08, 8, 8);
@@ -333,6 +432,7 @@ function createNpcMesh(animal) {
   const cheekR = new THREE.Mesh(cheekGeo, cheekMat);
   cheekR.position.set(0.25, 1.2, 0.3);
   group.add(cheekL); group.add(cheekR);
+  fallbackMeshes.push(cheekL, cheekR);
   // 귀/뿔 (종족별 헤더 마커)
   if (animal.species === '토끼') {
     const earGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 8);
@@ -343,6 +443,7 @@ function createNpcMesh(animal) {
     earR.position.set(0.12, 1.75, 0);
     earR.rotation.z = -0.1;
     group.add(earL); group.add(earR);
+    fallbackMeshes.push(earL, earR);
   } else if (animal.species === '고양이') {
     const earGeo = new THREE.ConeGeometry(0.12, 0.25, 4);
     const earL = new THREE.Mesh(earGeo, bodyMat);
@@ -350,6 +451,7 @@ function createNpcMesh(animal) {
     const earR = new THREE.Mesh(earGeo, bodyMat);
     earR.position.set(0.2, 1.65, 0);
     group.add(earL); group.add(earR);
+    fallbackMeshes.push(earL, earR);
   } else if (animal.species === '부엉이') {
     const tuftGeo = new THREE.ConeGeometry(0.08, 0.2, 4);
     const tuftL = new THREE.Mesh(tuftGeo, bodyMat);
@@ -357,6 +459,7 @@ function createNpcMesh(animal) {
     const tuftR = new THREE.Mesh(tuftGeo, bodyMat);
     tuftR.position.set(0.18, 1.7, 0);
     group.add(tuftL); group.add(tuftR);
+    fallbackMeshes.push(tuftL, tuftR);
   } else if (animal.species === '앵무새') {
     const crestGeo = new THREE.ConeGeometry(0.15, 0.35, 6);
     const crest = new THREE.Mesh(crestGeo, new THREE.MeshStandardMaterial({ color: 0xff7a9c }));
@@ -368,6 +471,7 @@ function createNpcMesh(animal) {
     beak.position.set(0, 1.28, 0.4);
     beak.rotation.x = Math.PI/2;
     group.add(beak);
+    fallbackMeshes.push(crest, beak);
   } else if (animal.species === '거북이') {
     // 등껍질
     const shellGeo = new THREE.SphereGeometry(0.5, 16, 12, 0, Math.PI * 2, 0, Math.PI/2);
@@ -376,7 +480,17 @@ function createNpcMesh(animal) {
     shell.position.y = 0.7;
     shell.castShadow = true;
     group.add(shell);
+    fallbackMeshes.push(shell);
   }
+  
+  // 폴백 메시들 참조 저장 (GLTF 로드 성공 시 숨기기 위해)
+  group.userData.fallbackMeshes = fallbackMeshes;
+  
+  // 시나리오 NPC면 GLTF 모델 비동기 로드
+  if (npcId) {
+    loadGltfForNpc(group, npcId);
+  }
+  
   return group;
 }
 
@@ -726,7 +840,7 @@ function getFavoriteLocation(npc) {
 
 function spawnNpcMesh(npc) {
   const animal = ANIMALS.find(a => a.species === npc.species);
-  const mesh = createNpcMesh(animal);
+  const mesh = createNpcMesh(animal, npc.id);
   // 초기 스폰 위치는 자기 favorite 장소 근처에서 시작
   const fav = getFavoriteLocation(npc);
   const startX = fav.x + (Math.random() - 0.5) * 2.5;
@@ -1673,6 +1787,11 @@ function updateNpcs(dt) {
     const npc = state.npcs.find(x => x.id == id);
     if (!npc) return;
     
+    // GLTF 애니메이션 믹서 업데이트 (있으면)
+    if (n.mesh.userData.mixer) {
+      n.mesh.userData.mixer.update(dt);
+    }
+    
     // 건물 외출/귀가 상태 머신 (씬 모드와 무관하게 계속 돌아감)
     updateNpcBuildingState(dt, id, n, npc);
     
@@ -1742,7 +1861,10 @@ function updateNpcs(dt) {
         const targetAngle = Math.atan2(dir.x, dir.z);
         n.mesh.rotation.y = targetAngle;
         n.bounce += dt * 10;
-        n.mesh.position.y = Math.abs(Math.sin(n.bounce)) * 0.08;
+        // GLTF 자체 애니메이션이 있으면 바운스 생략 (이중 흔들림 방지)
+        if (!n.mesh.userData.mixer) {
+          n.mesh.position.y = Math.abs(Math.sin(n.bounce)) * 0.08;
+        }
       }
     } else if (n.state === 'idle') {
       n.mesh.position.y = 0;
