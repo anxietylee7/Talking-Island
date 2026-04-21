@@ -313,11 +313,11 @@ const gltfCache = {}; // { 'chaka': {scene, animations} } 형태
 
 // 시나리오 NPC ID → 모델 파일명 매핑
 const NPC_MODEL_MAP = {
-  'story_chaka': 'models/chaka.gltf',
-  'story_yami': 'models/yami.gltf',
-  'story_bamtol': 'models/bamtol.gltf',
-  'story_luru': 'models/luru.gltf',
-  'story_somi': 'models/somi.gltf',
+  'story_chaka': 'models/chaka.glb',
+  'story_yami': 'models/yami.glb',
+  'story_bamtol': 'models/bamtol.glb',
+  'story_luru': 'models/luru.glb',
+  'story_somi': 'models/somi.glb',
 };
 
 // 모델의 자동 크기 조정: NPC 메시의 표준 높이는 약 2.0 유닛
@@ -365,21 +365,10 @@ function attachGltfToGroup(group, gltfScene, animations) {
           m.transparent = false;
           // 2) 양면 렌더링 (face가 뒤집혀 있어도 보이게)
           m.side = THREE.DoubleSide;
-          // 3) 🎨 PBR 머티리얼 밝기 보정 (전역 sRGB 설정 없이 개별 머티리얼 조정)
-          //    원본 모델이 Linear 공간 기준으로 어둡게 나오는 문제를 머티리얼 단에서 해결
+          // 3) PBR 머티리얼 기본 보정 (metalness=0으로 환경맵 없이도 렌더 가능)
           if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
             m.metalness = 0;
             m.roughness = Math.max(m.roughness ?? 0.5, 0.7);
-            // color를 sRGB→Linear 변환 근사치로 밝게 증폭 (감마 2.2 역변환)
-            if (m.color) {
-              m.color.r = Math.pow(m.color.r, 1 / 2.2);
-              m.color.g = Math.pow(m.color.g, 1 / 2.2);
-              m.color.b = Math.pow(m.color.b, 1 / 2.2);
-            }
-            // 텍스처가 있으면 sRGB로 명시 (r128에서 GLTF 자동 설정 누락 대응)
-            if (m.map) {
-              m.map.encoding = THREE.sRGBEncoding;
-            }
           }
           m.needsUpdate = true;
         });
