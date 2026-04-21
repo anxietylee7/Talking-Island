@@ -308,7 +308,8 @@ const gltfCache = {}; // { 'chaka': {scene, animations} } 형태
 // 시나리오 NPC ID → 모델 파일명 매핑
 const NPC_MODEL_MAP = {
   'story_chaka': 'models/chaka.gltf',
-  'story_yami': 'models/yami.gltf',
+  // 야미만 Three.js 공식 샘플 모델로 테스트 — 유저 모델이 문제인지 제 코드가 문제인지 구별용
+  'story_yami': 'https://threejs.org/examples/models/gltf/Soldier.glb',
   'story_bamtol': 'models/bamtol.gltf',
   'story_luru': 'models/luru.gltf',
   'story_somi': 'models/somi.gltf',
@@ -342,15 +343,52 @@ function attachGltfToGroup(group, gltfScene, animations) {
   
   console.log(`[gltf] model bbox after scale: min.y=${scaledBox.min.y.toFixed(2)} max.y=${scaledBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)}`);
   
-  // 그림자
+  // 그림자 + SkinnedMesh 관련 흔한 문제 방어
   modelRoot.traverse(obj => {
     if (obj.isMesh) {
       obj.castShadow = true;
       obj.receiveShadow = true;
+      // 1) 투명도 강제 불투명
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach(m => {
+          if (m.transparent && m.opacity < 0.1) m.opacity = 1;
+          m.transparent = false;
+          // 양면 렌더링 (face가 뒤집혀 있어도 보이게)
+          m.side = THREE.DoubleSide;
+          m.needsUpdate = true;
+        });
+      }
+      // 2) SkinnedMesh의 frustumCulling 끄기 (애니메이션으로 bbox 바뀌는데 Three.js가 잘못 컬링하는 문제 방어)
+      if (obj.isSkinnedMesh) {
+        obj.frustumCulled = false;
+      }
     }
   });
   
   group.add(modelRoot);
+  
+  // 🔍 디버그: 모델 내부 구조 확인
+  let meshCount = 0;
+  let skinnedMeshCount = 0;
+  let materialInfo = [];
+  modelRoot.traverse(obj => {
+    if (obj.isSkinnedMesh) {
+      skinnedMeshCount++;
+      meshCount++;
+      const mat = obj.material;
+      const matName = Array.isArray(mat) ? mat.map(m => m.type).join(',') : mat.type;
+      const visible = obj.visible;
+      const frustumCulled = obj.frustumCulled;
+      materialInfo.push(`Skinned:${obj.name || '?'} mat=${matName} visible=${visible} frustumCulled=${frustumCulled}`);
+    } else if (obj.isMesh) {
+      meshCount++;
+      const mat = obj.material;
+      const matName = Array.isArray(mat) ? mat.map(m => m.type).join(',') : mat.type;
+      materialInfo.push(`Mesh:${obj.name || '?'} mat=${matName} visible=${obj.visible}`);
+    }
+  });
+  console.log(`[gltf STRUCTURE] ${meshCount} meshes (${skinnedMeshCount} skinned). Details:`, materialInfo);
   
   // 애니메이션이 있으면 믹서 생성 후 기본 클립 재생
   let mixer = null;
