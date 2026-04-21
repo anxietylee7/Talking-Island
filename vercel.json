@@ -1,11 +1,4 @@
 {
   "version": 2,
-  "buildCommand": null,
-  "outputDirectory": null,
-  "framework": null,
-  "functions": {
-    "api/chat.js": {
-      "maxDuration": 30
-    }
-  }
+  "framework": null
 }
