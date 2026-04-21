@@ -1,10 +1,3 @@
-// =========================================================
-// 인트로 가챠 (전역 함수로 노출 - onclick에서 호출)
-// =========================================================
-// 5회 가챠 시퀀스 (고정 NPC 5명을 섞어서 뽑기 연출)
-let introDrawSequence = null;
-let introDrawIndex = 0;
-
 function buildDrawSequence() {
   // STORY_NPCS 5명의 순서를 섞기만 함 (누가 먼저 뽑힐지는 랜덤)
   return [...STORY_NPCS].sort(() => Math.random() - 0.5);
