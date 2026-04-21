@@ -643,9 +643,13 @@ function updateUser(dt) {
   const newZ = u.mesh.position.z + dirZ * u.speed * dt;
   
   if (state.viewMode === 'interior') {
-    // 인테리어 안: 충돌 대신 벽 안쪽으로 clamp (6x6 기준으로 ±5)
-    u.mesh.position.x = Math.max(-5, Math.min(5, newX));
-    u.mesh.position.z = Math.max(-5, Math.min(5, newZ));
+    // 인테리어 안: 벽 안쪽 clamp + 가구 AABB 충돌
+    const clampedX = Math.max(-5, Math.min(5, newX));
+    const clampedZ = Math.max(-5, Math.min(5, newZ));
+    const resolved = { x: clampedX, z: clampedZ };
+    resolveInteriorCollisions(resolved);
+    u.mesh.position.x = resolved.x;
+    u.mesh.position.z = resolved.z;
   } else {
     // 외부: 기존 충돌 처리 — 건물·나무·연못·다른 NPC와 겹치지 않게 밀어냄
     const resolved = { x: newX, z: newZ };
@@ -859,6 +863,41 @@ function updateInteriorLighting() {
 const interiorObjects = new THREE.Group();
 interiorScene.add(interiorObjects);
 
+// 인테리어 가구 충돌 장애물 리스트 — buildInterior에서 방마다 재구축
+// 형식: { minX, maxX, minZ, maxZ } — 축 정렬 박스(AABB)
+const interiorObstacles = [];
+// AABB 헬퍼: 중심과 크기로 AABB 생성 후 등록
+function addInteriorObstacle(cx, cz, w, d) {
+  interiorObstacles.push({
+    minX: cx - w/2, maxX: cx + w/2,
+    minZ: cz - d/2, maxZ: cz + d/2,
+  });
+}
+
+// 인테리어 충돌 해소 — 캐릭터 반경 0.5 기준으로 AABB 장애물에서 밀어냄
+// pos: {x, z} (수정됨)
+function resolveInteriorCollisions(pos) {
+  const r = 0.5; // 캐릭터 반경
+  for (const box of interiorObstacles) {
+    // 캐릭터가 박스 안 또는 박스 가장자리 r 안쪽에 있으면 밀어냄
+    // 박스 확장: 캐릭터 반경만큼
+    const ex_minX = box.minX - r, ex_maxX = box.maxX + r;
+    const ex_minZ = box.minZ - r, ex_maxZ = box.maxZ + r;
+    if (pos.x >= ex_minX && pos.x <= ex_maxX && pos.z >= ex_minZ && pos.z <= ex_maxZ) {
+      // 가장 가까운 가장자리로 밀어냄
+      const dxLeft  = pos.x - ex_minX; // 좌측 가장자리까지 거리 (안쪽)
+      const dxRight = ex_maxX - pos.x;
+      const dzTop   = pos.z - ex_minZ;
+      const dzBot   = ex_maxZ - pos.z;
+      const minD = Math.min(dxLeft, dxRight, dzTop, dzBot);
+      if (minD === dxLeft) pos.x = ex_minX;
+      else if (minD === dxRight) pos.x = ex_maxX;
+      else if (minD === dzTop) pos.z = ex_minZ;
+      else pos.z = ex_maxZ;
+    }
+  }
+}
+
 function makeFloor(color) {
   const floorGeo = new THREE.PlaneGeometry(12, 12);
   const floor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({ color }));
@@ -885,6 +924,9 @@ function makeBox(w, h, d, color, x, y, z, castShadow = true) {
 function buildInterior(type) {
   // 기존 오브젝트 제거
   while (interiorObjects.children.length) interiorObjects.remove(interiorObjects.children[0]);
+  
+  // 인테리어 가구 충돌 장애물 리셋 (방별로 다시 구축)
+  interiorObstacles.length = 0;
   
   // 공통 바닥
   const floorColors = {
@@ -972,6 +1014,8 @@ function buildInterior(type) {
       if (obj.isMesh) obj.userData.bedRef = bedGroup;
     });
     interiorObjects.add(bedGroup);
+    // 침대 충돌 박스 (회전 후 기준: 1.7 × 2.6)
+    addInteriorObstacle(3.4, -3, 1.8, 2.7);
     
     // 침대 옆 작은 협탁 + 램프
     const nightstand = makeBox(0.7, 0.7, 0.7, 0x8b5a3c, 3.4, 0.35, -0.8);
@@ -999,6 +1043,8 @@ function buildInterior(type) {
       const leg = makeBox(0.1, 1.0, 0.1, 0x7a5a3a, -3.2 + dx, 0.5, -5.0 + dz);
       interiorObjects.add(leg);
     }
+    // 책상 + 의자 공간 충돌 박스 (의자까지 묶어서 약간 넉넉하게)
+    addInteriorObstacle(-3.2, -4.6, 2.2, 1.8);
     // 책상 위 노트북 (닫힘)
     const laptop = makeBox(0.7, 0.05, 0.5, 0x3a3a3a, -3.0, 1.13, -5.1);
     interiorObjects.add(laptop);
@@ -1028,6 +1074,7 @@ function buildInterior(type) {
     // 4) 책장 (좌측 벽에 붙임)
     const bookshelf = makeBox(0.5, 3.0, 2.2, 0x6b4423, -5.5, 1.5, -3);
     interiorObjects.add(bookshelf);
+    addInteriorObstacle(-5.5, -3, 0.7, 2.3);
     // 책장 선반 (3줄)
     for (let i = 0; i < 3; i++) {
       const shelfY = 0.5 + i * 0.9;
@@ -1043,6 +1090,7 @@ function buildInterior(type) {
     // 5) 옷장 (우측 벽에 붙임, 침대와 분리)
     const wardrobe = makeBox(0.6, 3.0, 2.0, 0x8b5a3c, 5.6, 1.5, 4);
     interiorObjects.add(wardrobe);
+    addInteriorObstacle(5.6, 4, 0.8, 2.1);
     // 옷장 문손잡이 2개
     for (const y of [1.3, 1.7]) {
       const handle = new THREE.Mesh(
@@ -1059,6 +1107,7 @@ function buildInterior(type) {
     // 6) 소파 (중앙 앞쪽)
     const sofaSeat = makeBox(3.2, 0.5, 1.2, 0x9ab6d4, 0, 0.5, 3.8);
     interiorObjects.add(sofaSeat);
+    addInteriorObstacle(0, 4, 3.3, 1.6);
     const sofaBack = makeBox(3.2, 1.0, 0.3, 0x8aa6c4, 0, 1.0, 4.4);
     interiorObjects.add(sofaBack);
     // 소파 팔걸이 (양쪽)
@@ -1167,6 +1216,8 @@ function buildInterior(type) {
     // 카메라 본체
     const cam = makeBox(0.8, 0.55, 0.5, 0x1a1a1a, -4, 2.3, 2);
     interiorObjects.add(cam);
+    // 삼각대+카메라 충돌 박스
+    addInteriorObstacle(-4, 2, 0.9, 0.9);
     // 렌즈
     const lens = new THREE.Mesh(
       new THREE.CylinderGeometry(0.22, 0.28, 0.5, 16),
@@ -1203,6 +1254,7 @@ function buildInterior(type) {
     // 카운터/작업대 (중앙)
     const counter = makeBox(2.5, 1, 1.2, 0x6b4c52, 0, 0.5, 0);
     interiorObjects.add(counter);
+    addInteriorObstacle(0, 0, 2.6, 1.3);
     const counterTop = makeBox(2.5, 0.08, 1.2, 0x8b6a72, 0, 1.04, 0);
     interiorObjects.add(counterTop);
     // 사진 앨범 / 노트북
@@ -1225,6 +1277,7 @@ function buildInterior(type) {
     interiorObjects.add(bar);
     const barTop = makeBox(7, 0.1, 1.2, 0xd4a574, 0, 1.15, -4.5);
     interiorObjects.add(barTop);
+    addInteriorObstacle(0, -4.5, 7.2, 1.3);
     // 에스프레소 머신
     const machine = makeBox(1.2, 0.9, 0.8, 0xc0c0c0, -2, 1.65, -4.5);
     interiorObjects.add(machine);
@@ -1262,6 +1315,8 @@ function buildInterior(type) {
       for (const [cx, cz] of [[-1.3, 0], [1.3, 0]]) {
         interiorObjects.add(makeBox(0.7, 0.15, 0.7, 0xd4a5f5, tx + cx, 0.5, tz + cz));
       }
+      // 테이블 + 양옆 의자까지 묶어 충돌 박스 하나
+      addInteriorObstacle(tx, tz, 3.2, 1.6);
     }
     // 메뉴 보드
     const board = makeBox(2, 1.2, 0.05, 0x6b4423, 3, 3, -5.95);
@@ -1279,6 +1334,8 @@ function buildInterior(type) {
     stands.forEach(([sx, sz], idx) => {
       // 나무 박스
       interiorObjects.add(makeBox(1.4, 0.8, 1.4, 0x8b5a2b, sx, 0.4, sz));
+      // 진열대 충돌 박스
+      addInteriorObstacle(sx, sz, 1.5, 1.5);
       // 화분의 꽃들
       const colors = flowerColorSets[idx % flowerColorSets.length];
       for (let i = 0; i < 5; i++) {
@@ -1305,6 +1362,7 @@ function buildInterior(type) {
     // 중앙 카운터
     const counter = makeBox(2.5, 1, 1.2, 0xdcc8ff, 0, 0.5, 1);
     interiorObjects.add(counter);
+    addInteriorObstacle(0, 1, 2.6, 1.3);
     // 리본과 바구니
     const basket = new THREE.Mesh(
       new THREE.CylinderGeometry(0.4, 0.3, 0.3, 12),
@@ -1341,6 +1399,7 @@ function buildInterior(type) {
     for (const [lx, lz] of [[-1.2, -0.7],[1.2, -0.7],[-1.2, 0.7],[1.2, 0.7]]) {
       interiorObjects.add(makeBox(0.15, 1, 0.15, 0x8b5a2b, 1+lx, 0.5, 1+lz));
     }
+    addInteriorObstacle(1, 1, 3.2, 2.0);
     // 의자
     interiorObjects.add(makeBox(0.7, 0.15, 0.7, 0xc9dcf5, -0.5, 0.5, 1));
     interiorObjects.add(makeBox(0.7, 0.15, 0.7, 0xc9dcf5, 2.5, 0.5, 1));
@@ -1349,13 +1408,16 @@ function buildInterior(type) {
     interiorObjects.add(makeBox(0.55, 0.08, 0.4, 0x2d6a4f, 1.7, 1.11, 1.2));
   }
   
-  // 공통: 문 (뒤쪽 벽 중앙에 표시)
+  // 공통: 문 (뒤쪽 벽 중앙에 표시) — 클릭하면 외부로 나감
   const doorFrame = makeBox(1.5, 2.5, 0.1, 0x8b5a2b, 4.5, 1.25, -5.9);
+  doorFrame.userData = { type: 'exit_door' };
   interiorObjects.add(doorFrame);
   const doorPanel = makeBox(1.2, 2.2, 0.05, 0xc44536, 4.5, 1.1, -5.85);
+  doorPanel.userData = { type: 'exit_door' };
   interiorObjects.add(doorPanel);
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffd700 }));
   knob.position.set(5, 1.1, -5.82);
+  knob.userData = { type: 'exit_door' };
   interiorObjects.add(knob);
 }
 
@@ -1685,9 +1747,13 @@ function updateNpcs(dt) {
           n.mesh.position.x = resolved.x;
           n.mesh.position.z = resolved.z;
         } else {
-          // 인테리어 안: 벽(±5.5) 안쪽으로만
-          n.mesh.position.x = Math.max(-5, Math.min(5, newX));
-          n.mesh.position.z = Math.max(-5, Math.min(5, newZ));
+          // 인테리어 안: 벽 clamp + 가구 AABB 충돌
+          const clampedX = Math.max(-5, Math.min(5, newX));
+          const clampedZ = Math.max(-5, Math.min(5, newZ));
+          const resolvedInt = { x: clampedX, z: clampedZ };
+          resolveInteriorCollisions(resolvedInt);
+          n.mesh.position.x = resolvedInt.x;
+          n.mesh.position.z = resolvedInt.z;
         }
         const targetAngle = Math.atan2(dir.x, dir.z);
         n.mesh.rotation.y = targetAngle;
@@ -1934,7 +2000,7 @@ renderer.domElement.addEventListener('click', e => {
   raycaster.setFromCamera(mouse, camera);
   
   if (state.viewMode === 'interior') {
-    // 1) 인테리어 오브젝트 클릭 체크 (침대 등)
+    // 1) 인테리어 오브젝트 클릭 체크 (침대, 문 등)
     const interiorChildren = [];
     interiorObjects.traverse(obj => { if (obj.isMesh) interiorChildren.push(obj); });
     const objHits = raycaster.intersectObjects(interiorChildren, false);
@@ -1944,6 +2010,26 @@ renderer.domElement.addEventListener('click', e => {
       while (target) {
         if (target.userData?.type === 'bed') {
           handleBedClick();
+          return;
+        }
+        if (target.userData?.type === 'exit_door') {
+          // 유저가 문 근처에 있으면 바로 나가기, 아니면 문 앞으로 이동 후 자동 나가기
+          if (state.user.mesh) {
+            const dx = 4.5 - state.user.mesh.position.x;
+            const dz = -5.0 - state.user.mesh.position.z; // 문 앞 살짝 안쪽
+            const dist = Math.hypot(dx, dz);
+            if (dist <= 1.5) {
+              exitInterior();
+            } else {
+              showNotification('🚪 문으로 이동 중...');
+              moveUserTo(4.5, -4.5, {
+                stopDistance: 0.5,
+                onArrive: () => exitInterior(),
+              });
+            }
+          } else {
+            exitInterior();
+          }
           return;
         }
         target = target.parent;
