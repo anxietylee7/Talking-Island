@@ -59,7 +59,7 @@ async function rollGacha() {
   "job": "직업 (구체적으로)",
   "dream": "꿈 (직업에서 한 단계 위의 목표)",
   "personality": "성격 한 줄",
-  "speechHabit": "말버릇 (예: ~냥, ~뿅, ~쿵)",
+  "speechHabit": "말버릇 (예: ~네요, ~지, ~군, ~음)",
   "secretSkill": "비밀 특기"
 }`;
     
@@ -121,15 +121,15 @@ async function sendChatMessage(text) {
       }
     }
     
-    const system = `너는 동물 주민 동네 게임의 NPC다. 귀엽고 캐주얼한 톤으로 짧게 대답해.
+    const speciesTag = npc.species ? ` (${npc.species} ${npc.emoji || ''})` : '';
+    const system = `너는 아기자기한 동네 게임의 NPC다. 캐주얼하고 자연스러운 톤으로 짧게 대답해.
 
 너의 정보:
-- 이름: ${npc.name} (${npc.species} ${npc.emoji})
+- 이름: ${npc.name}${speciesTag}
 - 직업: ${npc.job}
 - 꿈: ${npc.dream} (${npc.dreamProgress}%)
 - 성격: ${npc.personality}
 - 말버릇: "${npc.speechHabit}" (자주 섞어)
-- 종족특성: ${npc.trait}
 - 호감도: ${npc.affinity}/100
 
 규칙:
@@ -258,8 +258,8 @@ async function advanceToNightAndMorning() {
       if (yami) {
         const isFriendly = yami.affinity >= 50;
         const situation = isFriendly
-          ? `야미가 당신에게 조용히 찾아와 털어놓아요. "책을 훔쳤다는 소문이 퍼져서 첫 독서 모임 장소로 빌리기로 했던 밤톨 서점에서도 거절당했다냥... 장부를 확인하면 내가 예약한 책이라는 게 드러날 텐데, 밤톨이 너무 화나서 들어주질 않아서... 꿈을 포기해야 할지도 모르겠다냥. 어떻게 해야 할까요?"`
-          : `야미가 당신을 복잡한 눈빛으로 쳐다봐요. "다들 나를 도둑이라고 본다냥... 당신도 그렇게 보는 거죠? 독서 모임은 이제 못 열 것 같다냥. 밤톨한테 설명하고 싶은데 말 걸 용기도 안 나고... 내가 뭘 해야 할까요, 정말." 아직 당신을 완전히 믿지는 못하는 눈치에요.`;
+          ? `야미가 당신에게 조용히 찾아와 털어놓아요. "책을 훔쳤다는 소문이 퍼져서 첫 독서 모임 장소로 빌리기로 했던 밤톨 서점에서도 거절당했지... 장부를 확인하면 내가 예약한 책이라는 게 드러날 텐데, 밤톨이 너무 화나서 들어주질 않아서... 꿈을 포기해야 할지도 모르겠지. 어떻게 해야 할까?"`
+          : `야미가 당신을 복잡한 눈빛으로 쳐다봐요. "다들 나를 도둑이라고 보지... 당신도 그렇게 보는 거지? 독서 모임은 이제 못 열 것 같지. 밤톨한테 설명하고 싶은데 말 걸 용기도 안 나고... 내가 뭘 해야 할까, 정말." 아직 당신을 완전히 믿지는 못하는 눈치에요.`;
         
         newQuests.push({
           id: Date.now() + 100,
@@ -279,7 +279,8 @@ async function advanceToNightAndMorning() {
     else {
       for (const npc of state.npcs) {
         setLoading(true, `${npc.name}의 밤을 관찰 중...`);
-        const prompt = `${npc.species} ${npc.name}의 어젯밤 활동 한 줄 리포트를 만들어줘.
+        const speciesPrefix = npc.species ? `${npc.species} ` : '';
+        const prompt = `${speciesPrefix}${npc.name}의 어젯밤 활동 한 줄 리포트를 만들어줘.
 
 정보: 직업=${npc.job}, 꿈=${npc.dream}, 성격=${npc.personality}
 
