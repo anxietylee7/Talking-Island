@@ -466,9 +466,10 @@ function fadeFromBlack(durationMs = 1000, onComplete) {
 // =========================================================
 const ASSET_SLOTS = {
   npc: [
-    'chaka_natural', 'chaka_happy', 'chaka_sad', 'chaka_surprised', 'chaka_thinking',
-    'yami_natural', 'yami_happy', 'yami_sad', 'yami_surprised', 'yami_angry',
-    'bamtol_natural', 'bamtol_happy', 'bamtol_angry', 'bamtol_surprised', 'bamtol_sad',
+    'chaka_natural', 'chaka_happy', 'chaka_sad', 'chaka_angry', 'chaka_surprised', 'chaka_thinking',
+    'yami_natural', 'yami_happy', 'yami_sad', 'yami_angry', 'yami_surprised', 'yami_thinking',
+    'bamtol_natural', 'bamtol_happy', 'bamtol_sad', 'bamtol_angry', 'bamtol_surprised', 'bamtol_thinking',
+    'somi_natural', 'luru_natural',
   ],
   evidence: [
     'chaka_photo_evidence', 'bamtol_ledger', 'missing_book_shelf', 
@@ -478,21 +479,26 @@ const ASSET_SLOTS = {
 };
 
 const ASSET_META = {
-  chaka_natural: { emoji: '🦝', label: '차카 평소' },
-  chaka_happy: { emoji: '🦝', label: '차카 기쁨' },
-  chaka_sad: { emoji: '🦝', label: '차카 슬픔' },
-  chaka_surprised: { emoji: '🦝', label: '차카 놀람' },
-  chaka_thinking: { emoji: '🦝', label: '차카 고민' },
-  yami_natural: { emoji: '🐱', label: '야미 평소' },
-  yami_happy: { emoji: '🐱', label: '야미 기쁨' },
-  yami_sad: { emoji: '🐱', label: '야미 슬픔' },
-  yami_surprised: { emoji: '🐱', label: '야미 놀람' },
-  yami_angry: { emoji: '🐱', label: '야미 속상' },
-  bamtol_natural: { emoji: '🐿️', label: '밤톨 평소' },
-  bamtol_happy: { emoji: '🐿️', label: '밤톨 기쁨' },
-  bamtol_angry: { emoji: '🐿️', label: '밤톨 분노' },
-  bamtol_surprised: { emoji: '🐿️', label: '밤톨 놀람' },
-  bamtol_sad: { emoji: '🐿️', label: '밤톨 슬픔' },
+  chaka_natural: { emoji: '📸', label: '차카 평소' },
+  chaka_happy: { emoji: '📸', label: '차카 기쁨' },
+  chaka_sad: { emoji: '📸', label: '차카 슬픔' },
+  chaka_angry: { emoji: '📸', label: '차카 분노' },
+  chaka_surprised: { emoji: '📸', label: '차카 놀람' },
+  chaka_thinking: { emoji: '📸', label: '차카 고민' },
+  yami_natural: { emoji: '📖', label: '야미 평소' },
+  yami_happy: { emoji: '📖', label: '야미 기쁨' },
+  yami_sad: { emoji: '📖', label: '야미 슬픔' },
+  yami_angry: { emoji: '📖', label: '야미 분노' },
+  yami_surprised: { emoji: '📖', label: '야미 놀람' },
+  yami_thinking: { emoji: '📖', label: '야미 고민' },
+  bamtol_natural: { emoji: '📚', label: '밤톨 평소' },
+  bamtol_happy: { emoji: '📚', label: '밤톨 기쁨' },
+  bamtol_sad: { emoji: '📚', label: '밤톨 슬픔' },
+  bamtol_angry: { emoji: '📚', label: '밤톨 분노' },
+  bamtol_surprised: { emoji: '📚', label: '밤톨 놀람' },
+  bamtol_thinking: { emoji: '📚', label: '밤톨 고민' },
+  somi_natural: { emoji: '🌸', label: '솜이 평소' },
+  luru_natural: { emoji: '☕', label: '루루 평소' },
   chaka_photo_evidence: { emoji: '📷', label: '차카 야경사진' },
   bamtol_ledger: { emoji: '📖', label: '서점 장부' },
   missing_book_shelf: { emoji: '📚', label: '빈 선반' },
@@ -628,21 +634,21 @@ function detectEmotion(text, npcId) {
   if (/!!|놀라|헉|어머|진짜요\?|정말\?|이럴수가|충격/.test(text)) return 'surprised';
   // 분노 (밤톨·야미)
   if (/화나|짜증|그만|싫어|용납|감히|뭐야|!!|어쩌자는/.test(text)) {
-    if (npcId === 'story_bamtol') return 'angry';
-    if (npcId === 'story_yami') return 'angry';
+    if (npcId === 'bamtol') return 'angry';
+    if (npcId === 'yami') return 'angry';
   }
   // 고민 (차카 전용)
-  if (npcId === 'story_chaka' && /음\.\.|글쎄|아무래도|잘 모르|고민/.test(text)) return 'thinking';
+  if (npcId === 'chaka' && /음\.\.|글쎄|아무래도|잘 모르|고민/.test(text)) return 'thinking';
   
   return 'natural';
 }
 
 function getPortraitKey(npcId, emotion) {
-  const prefix = npcId.replace('story_', '');
-  const key = `${prefix}_${emotion}`;
+  // 이제 npcId가 이미 chaka/yami/bamtol/somi/luru 형태이므로 prefix 제거 불필요
+  const key = `${npcId}_${emotion}`;
   if (assetRegistry[key]) return key;
   // 폴백: natural
-  const fallback = `${prefix}_natural`;
+  const fallback = `${npcId}_natural`;
   return assetRegistry[fallback] ? fallback : null;
 }
 
@@ -707,11 +713,11 @@ function openZeta(npcId) {
     
     // NPC별 첫 인사말 (말버릇 섞어서)
     const greetings = {
-      'story_chaka': '어... 안녕하세요. 처음 뵙는 것 같네요.',
-      'story_yami': '안녕! 너도 책 좋아하지?',
-      'story_bamtol': '어서 오는군. 뭐 찾는 책이라도 있는군?',
-      'story_luru': '어서 오세요! 오늘은 뭐 마실래요?',
-      'story_somi': '안녕~ 오늘 동네 소식 들었음~?',
+      'chaka': '어... 안녕하세요. 처음 뵙는 것 같네요.',
+      'yami': '안녕! 너도 책 좋아하지?',
+      'bamtol': '어서 오는군. 뭐 찾는 책이라도 있는군?',
+      'luru': '어서 오세요! 오늘은 뭐 마실래요?',
+      'somi': '안녕~ 오늘 동네 소식 들었음~?',
     };
     const greeting = greetings[npcId] || `안녕! 반가워${npc.speechHabit || ''}`;
     
@@ -786,11 +792,11 @@ window.__zetaSend = async function() {
     let storyContext = '';
     if (npc.isStory) {
       const stage = state.storyStage;
-      if (npc.id === 'story_chaka') {
+      if (npc.id === 'chaka') {
         storyContext = `\n\n[배경 - 너는 사진사 차카다]\n- 너는 어젯밤 사진관 앞에서 야경 사진을 찍었다.\n- 나중에 사진을 본 밤톨이 "야미가 책을 훔쳤다"고 오해했다는 걸 ${stage === 'day1' ? '아직 모른다' : '알게 되었다'}.\n- 너는 단지 야경이 아름다워서 찍었을 뿐이고, 야미가 뭘 하는지는 잘 못 봤다.\n- ${stage === 'quest_active' || stage === 'day2_triggered' ? '지금은 상황이 혼란스러워서 사진을 내려야 할지 고민 중이다.' : ''}`;
-      } else if (npc.id === 'story_yami') {
+      } else if (npc.id === 'yami') {
         storyContext = `\n\n[배경 - 너는 문학도 학생 야미다]\n- 너는 밤톨 서점에 책('별의 시간')을 예약했고, 뒷문 열쇠를 받아 밤에 책을 픽업했다. 훔친 게 아니다.\n- 독서 모임을 준비 중이고, 첫 모임 장소로 밤톨 서점을 빌리기로 했었다.\n- ${stage === 'day2_triggered' ? '오늘 도둑이라는 소문을 듣고 큰 충격을 받았다. 억울하고 슬프다.' : ''}\n- ${stage === 'quest_active' ? '밤톨이 독서 모임 장소 대여를 거절했다. 꿈이 흔들린다.' : ''}\n- ${stage === 'resolved' ? '사건이 마무리됐다.' : ''}`;
-      } else if (npc.id === 'story_bamtol') {
+      } else if (npc.id === 'bamtol') {
         storyContext = `\n\n[배경 - 너는 서점 주인 밤톨이다]\n- 너는 야미가 책을 "훔쳤다"고 믿고 있다. 차카의 야경 사진 한 장이 근거다.\n- 사실은 야미가 예약한 책이고, 너의 장부에 기록이 있다. 하지만 감정이 앞서서 확인을 못 하고 있다.\n- 심지어 장부에 기록되지 않은 다른 책 한 권도 사라져서 더 의심하고 있다.\n- ${stage === 'day2_triggered' ? '지금 화가 나 있고, 누구든 이 얘기를 꺼내면 방어적이다.' : ''}\n- ${stage === 'quest_active' ? '야미가 독서 모임 장소를 빌려달라고 했지만 거절했다.' : ''}`;
       }
       storyContext += `\n\n답변 시작 또는 끝에 [감정:natural|happy|sad|surprised|angry|thinking] 태그를 붙여서 네 현재 감정을 표현해. 예: "그건 말이지... [감정:angry]"`;
@@ -853,13 +859,13 @@ window.__zetaSend = async function() {
     renderNpcList();
     
     // 특정 키워드 트리거 — 증거 자동 팝업
-    if (npc.id === 'story_chaka' && /사진|야경|찍/.test(cleanResponse) && !collectedEvidence.has('chaka_photo_evidence')) {
+    if (npc.id === 'chaka' && /사진|야경|찍/.test(cleanResponse) && !collectedEvidence.has('chaka_photo_evidence')) {
       setTimeout(() => showEvidencePopup('chaka_photo_evidence', '차카가 찍은 그 날 밤의 사진'), 1500);
     }
-    if (npc.id === 'story_yami' && /독서 모임|독서모임|포스터/.test(cleanResponse) && !collectedEvidence.has('bookclub_poster')) {
+    if (npc.id === 'yami' && /독서 모임|독서모임|포스터/.test(cleanResponse) && !collectedEvidence.has('bookclub_poster')) {
       setTimeout(() => showEvidencePopup('bookclub_poster', '야미가 준비하던 독서 모임 포스터'), 1500);
     }
-    if (npc.id === 'story_bamtol' && /장부|예약/.test(cleanResponse) && !collectedEvidence.has('bamtol_ledger')) {
+    if (npc.id === 'bamtol' && /장부|예약/.test(cleanResponse) && !collectedEvidence.has('bamtol_ledger')) {
       setTimeout(() => showEvidencePopup('bamtol_ledger', '밤톨 서점의 장부'), 1500);
     }
   } catch (err) {
