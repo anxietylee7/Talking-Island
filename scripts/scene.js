@@ -664,22 +664,6 @@ function updateUser(dt) {
   u.mesh.position.y = Math.abs(Math.sin(u.bounce)) * 0.06;
   u.position.x = u.mesh.position.x;
   u.position.z = u.mesh.position.z;
-  
-  // 목적지가 장애물 안쪽이라 계속 접근 불가인 경우 타임아웃으로 멈춤
-  // (장애물에 막혀서 제자리에 있는 경우 0.5초 이상 지나면 포기)
-  if (!u._prevPos) u._prevPos = { x: u.mesh.position.x, z: u.mesh.position.z, t: performance.now() };
-  const moved = Math.hypot(u.mesh.position.x - u._prevPos.x, u.mesh.position.z - u._prevPos.z);
-  const elapsed = performance.now() - u._prevPos.t;
-  if (moved > 0.3) {
-    u._prevPos = { x: u.mesh.position.x, z: u.mesh.position.z, t: performance.now() };
-  } else if (elapsed > 800) {
-    // 0.8초 동안 거의 못 움직였으면 포기
-    console.log('[user] stuck, giving up');
-    u.moving = false;
-    u.targetPos = null;
-    hideDestinationMarker();
-    u._prevPos = null;
-  }
 }
 
 // NPC까지의 거리 계산 (유저 메시 기준)
