@@ -1,3 +1,10 @@
+// =========================================================
+// 인트로 가챠 (전역 함수로 노출 - onclick에서 호출)
+// =========================================================
+// 5회 가챠 시퀀스 (고정 NPC 5명을 섞어서 뽑기 연출)
+let introDrawSequence = null;
+let introDrawIndex = 0;
+
 function buildDrawSequence() {
   // STORY_NPCS 5명의 순서를 섞기만 함 (누가 먼저 뽑힐지는 랜덤)
   return [...STORY_NPCS].sort(() => Math.random() - 0.5);
@@ -48,10 +55,16 @@ window.__introRollGacha = async function() {
     // 진행도 업데이트
     document.getElementById('gacha-count').textContent = introDrawIndex;
     
-    // UI 갱신
+    // UI 갱신 — 캡슐에 natural 이미지 표시 (없으면 이모지 폴백)
     capsule.classList.remove('rolling');
     capsule.classList.add('popped');
-    capsule.textContent = newNpc.emoji;
+    const naturalKey = `${newNpc.id}_natural`;
+    const naturalImg = (window.PRELOADED_ASSETS || {})[naturalKey];
+    if (naturalImg) {
+      capsule.innerHTML = `<img src="${naturalImg}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;" alt="${newNpc.name}" />`;
+    } else {
+      capsule.textContent = newNpc.emoji;
+    }
     loading.classList.remove('show');
     loading.style.display = 'none';
     
@@ -67,9 +80,9 @@ window.__introRollGacha = async function() {
       capsule.appendChild(s);
     }
     
-    // 결과 카드 채우기
+    // 결과 카드 채우기 (species 표시 제거 — 이제 종족 개념 없음)
     document.getElementById('result-name').textContent = newNpc.name;
-    document.getElementById('result-species').textContent = `${newNpc.species} · ${newNpc.trait}`;
+    document.getElementById('result-species').textContent = newNpc.trait;
     document.getElementById('result-job').textContent = newNpc.job;
     document.getElementById('result-dream').textContent = newNpc.dream || '—';
     document.getElementById('result-personality').textContent = newNpc.personality;
@@ -105,7 +118,7 @@ window.__enterVillage = function() {
   setTimeout(() => {
     intro.style.display = 'none';
     
-    // state.npcs에는 이미 인트로에서 뽑은 5명이 있음 (메인 3 + 랜덤 2)
+    // state.npcs에는 이미 인트로에서 뽑은 시나리오 NPC 5명이 있음
     // 중복 스폰 방지 (혹시 이미 메시가 있으면 스킵)
     state.npcs.forEach(npc => {
       if (!npcMeshes[npc.id]) spawnNpcMesh(npc);
@@ -116,13 +129,11 @@ window.__enterVillage = function() {
     renderNpcList();
     renderCounts();
     
-    showNotification(`🏘️ 5명의 주민과 함께 동네가 시작됐어요!`);
-    
-    // Day 1 스토리 힌트 팝업
+    // 마을 진입 후 환영 메시지 (페이드 아웃 끝난 뒤 여유 있게 1.2초)
     setTimeout(() => {
       showStoryModal(
-        '🏘️ 동네가 시작됐어요',
-        '5명의 주민들과 함께 새 동네가 열렸어요.\n\n🧑 광장 중앙에 있는 게 당신이에요.\n• 바닥을 클릭하면 그쪽으로 이동합니다.\n• NPC를 클릭하면 가까이 다가가서 대화해요.\n• 집(북쪽)의 침대를 클릭하면 잠들 수 있어요.'
+        '🏘️ 동네에 오신 걸 환영해요',
+        '5명의 주민이 이미 이곳에 살고 있어요.\n\n🧑 광장 중앙에 있는 게 당신이에요.\n• 바닥을 클릭하면 그쪽으로 이동합니다.\n• 주민을 클릭하면 가까이 다가가서 대화해요.\n• 집(북쪽)의 침대를 클릭하면 잠들 수 있어요.\n\n편하게 인사하며 동네를 둘러보세요.'
       );
     }, 1200);
   }, 800);
@@ -134,7 +145,6 @@ function attach(id, event, fn) {
   if (!el) { console.warn('Element not found:', id); return; }
   el.addEventListener(event, fn);
 }
-attach('gacha-btn', 'click', rollGacha);
 attach('night-btn', 'click', advanceToNightAndMorning);
 attach('exit-interior', 'click', exitInterior);
 
