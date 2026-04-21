@@ -376,6 +376,23 @@
     font-size: 11px; align-self: center; font-style: italic;
     padding: 6px 12px;
   }
+  /* 감정 이미지: NPC 메시지 위에 표시되는 작은 프로필 */
+  .zeta-emotion-card {
+    align-self: flex-start;
+    max-width: 200px; margin-top: 4px;
+    border-radius: 16px; overflow: hidden;
+    background: white; border: 1px solid rgba(200, 170, 130, 0.2);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    animation: msgPop 0.4s ease-out;
+  }
+  .zeta-emotion-card img {
+    display: block; width: 200px; height: 200px;
+    object-fit: cover;
+  }
+  .zeta-emotion-card-caption {
+    padding: 6px 10px; font-size: 10px; color: #9c7a5a;
+    text-align: center;
+  }
   .zeta-typing {
     background: white; padding: 10px 14px; border-radius: 18px;
     align-self: flex-start; display: inline-flex; gap: 4px;
@@ -648,10 +665,6 @@
         <div class="zeta-header-sub" id="zeta-sub"></div>
       </div>
       <div class="zeta-heart">♥ <span id="zeta-affinity"></span></div>
-    </div>
-    <div class="zeta-portrait-area" id="zeta-portrait-area">
-      <img class="zeta-portrait" id="zeta-portrait" />
-      <div class="zeta-portrait-gradient"></div>
     </div>
     <div class="zeta-chat-area">
       <div class="zeta-messages" id="zeta-messages"></div>
@@ -1381,13 +1394,15 @@ function getPortraitKey(npcId, emotion) {
 }
 
 function setZetaPortrait(npcId, emotion) {
-  const key = getPortraitKey(npcId, emotion);
   const imgEl = document.getElementById('zeta-portrait');
+  const areaEl = document.getElementById('zeta-portrait-area');
+  // 포트레이트 영역이 제거됐으면 아무것도 안 함 (레거시 호출 대응)
+  if (!imgEl || !areaEl) return;
+  const key = getPortraitKey(npcId, emotion);
   if (!key) {
     imgEl.classList.remove('show');
     imgEl.src = '';
-    document.getElementById('zeta-portrait-area').style.background = 
-      'linear-gradient(135deg, #fef3e7, #fde8ec)';
+    areaEl.style.background = 'linear-gradient(135deg, #fef3e7, #fde8ec)';
     return;
   }
   const current = imgEl.src;
@@ -1400,6 +1415,21 @@ function setZetaPortrait(npcId, emotion) {
   }, 150);
 }
 
+// 메시지 위에 인라인 감정 이미지 추가
+function appendInlineEmotionCard(npcId, emotion, messagesEl) {
+  const key = getPortraitKey(npcId, emotion);
+  if (!key || !assetRegistry[key]) return null;
+  
+  const card = document.createElement('div');
+  card.className = 'zeta-emotion-card';
+  const img = document.createElement('img');
+  img.src = assetRegistry[key];
+  img.alt = emotion;
+  card.appendChild(img);
+  messagesEl.appendChild(card);
+  return card;
+}
+
 function openZeta(npcId) {
   const npc = state.npcs.find(n => n.id === npcId);
   if (!npc) return;
@@ -1409,9 +1439,6 @@ function openZeta(npcId) {
   document.getElementById('zeta-name').textContent = `${npc.emoji} ${npc.name}`;
   document.getElementById('zeta-sub').textContent = `${npc.job} · ${npc.personality}`;
   document.getElementById('zeta-affinity').textContent = npc.affinity;
-  
-  // 기본 표정: natural
-  setZetaPortrait(npcId, 'natural');
   
   // 기존 대화 이력 표시
   const messagesEl = document.getElementById('zeta-messages');
@@ -1423,18 +1450,24 @@ function openZeta(npcId) {
     sys.textContent = `${npc.name}와의 첫 만남`;
     messagesEl.appendChild(sys);
   }
+  
+  // 히스토리 렌더링 — NPC 감정이 바뀌는 지점에 이미지 카드 삽입
+  let prevEmotion = null;
   history.forEach(m => {
+    if (m.role === 'npc') {
+      const emotion = m.emotion || detectEmotion(m.text, npcId);
+      if (emotion !== prevEmotion) {
+        appendInlineEmotionCard(npcId, emotion, messagesEl);
+        prevEmotion = emotion;
+      }
+    }
     const msg = document.createElement('div');
     msg.className = `zeta-msg ${m.role}`;
     msg.textContent = m.role === 'user' ? m.text : `${m.text}`;
     messagesEl.appendChild(msg);
   });
-  
-  // 최근 메시지에서 표정 업데이트
-  const lastNpcMsg = [...history].reverse().find(m => m.role === 'npc');
-  if (lastNpcMsg) {
-    setZetaPortrait(npcId, detectEmotion(lastNpcMsg.text, npcId));
-  }
+  // 마지막 감정 상태 저장 (새 대화에서 비교용)
+  if (prevEmotion) state.chatHistory[`_emotion_${npcId}`] = prevEmotion;
   
   document.getElementById('zeta-chat').classList.add('show');
   setTimeout(() => {
@@ -1511,8 +1544,13 @@ window.__zetaSend = async function() {
 
 최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
     
-    const context = history.slice(-6).map(m => `${m.role === 'user' ? '유저' : npc.name}: ${m.text}`).join('\n');
-    const rawResponse = await callClaude(system, context);
+    // history를 OpenAI messages 배열로 변환
+    // user는 그대로, npc는 assistant로 매핑
+    const messagesArr = history.slice(-6).map(m => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.text,
+    }));
+    const rawResponse = await callClaude(system, messagesArr);
     
     // 감정 태그 제거한 깨끗한 응답
     const cleanResponse = rawResponse.replace(/\[감정:[a-z]+\]/gi, '').trim();
@@ -1521,6 +1559,13 @@ window.__zetaSend = async function() {
     // 타이핑 제거
     typing.remove();
     
+    // 감정 이미지 — 이전 NPC 감정과 다를 때만 표시 (첫 메시지 포함)
+    const lastEmotion = state.chatHistory[`_emotion_${npcId}`] || null;
+    if (emotion !== lastEmotion) {
+      appendInlineEmotionCard(npcId, emotion, messagesEl);
+      state.chatHistory[`_emotion_${npcId}`] = emotion;
+    }
+    
     // NPC 답변 추가
     const npcMsg = document.createElement('div');
     npcMsg.className = 'zeta-msg npc';
@@ -1528,10 +1573,7 @@ window.__zetaSend = async function() {
     messagesEl.appendChild(npcMsg);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     
-    // 표정 전환
-    setZetaPortrait(npcId, emotion);
-    
-    history.push({ role: 'npc', text: cleanResponse });
+    history.push({ role: 'npc', text: cleanResponse, emotion });
     state.chatHistory[npcId] = history;
     
     // 호감도/꿈 진행도 소폭 증가
@@ -1583,18 +1625,23 @@ function setLoading(flag, msg = '불러오는 중...') {
 // =========================================================
 // Claude API 호출
 // =========================================================
-async function callClaude(systemPrompt, userPrompt, expectJSON = false) {
+async function callClaude(systemPrompt, userPromptOrMessages, expectJSON = false) {
   try {
     console.log('[callClaude] start', expectJSON ? 'JSON' : 'text');
     // Vercel 서버리스 함수 경유 (API 키는 서버 환경변수에 보관)
+    const body = {
+      system: systemPrompt,
+      max_tokens: 1000,
+    };
+    if (Array.isArray(userPromptOrMessages)) {
+      body.messages = userPromptOrMessages;
+    } else {
+      body.user = userPromptOrMessages;
+    }
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system: systemPrompt,
-        user: userPrompt,
-        max_tokens: 1000,
-      })
+      body: JSON.stringify(body)
     });
     if (!response.ok) {
       const errText = await response.text();
@@ -3566,8 +3613,12 @@ async function sendChatMessage(text) {
 
 최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
     
-    const context = history.slice(-6).map(m => `${m.role === 'user' ? '유저' : npc.name}: ${m.text}`).join('\n');
-    const response = await callClaude(system, context);
+    // history를 OpenAI messages 배열로 변환
+    const messagesArr = history.slice(-6).map(m => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.text,
+    }));
+    const response = await callClaude(system, messagesArr);
     
     history.push({ role: 'npc', text: response });
     state.chatHistory[npcId] = history;
