@@ -372,8 +372,26 @@ function attachGltfToGroup(group, gltfScene, animations) {
       mixer.update(0.01);
       modelRoot.updateMatrixWorld(true);
       const animatedBox = new THREE.Box3().setFromObject(modelRoot);
-      modelRoot.position.y = -animatedBox.min.y;
-      console.log(`[gltf] animated bbox: min.y=${animatedBox.min.y.toFixed(2)} max.y=${animatedBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)} (clip: ${pickClip.name})`);
+      
+      // ⚠️ 중요: 애니메이션이 스켈레톤 root bone을 움직여서 실제 렌더 위치가
+      // bbox와 다를 수 있음. 그래서 bbox 기준보다 추가로 위로 올림.
+      // animatedBox.min.y가 음수면 그만큼 위로, 양수면 양수만큼 아래로 — 이건 그대로 두고
+      // 추가로 모델 높이의 절반 정도 위로 (모델 root가 대체로 엉덩이=중간)
+      const halfHeight = TARGET_NPC_HEIGHT * 0.5;
+      modelRoot.position.y = -animatedBox.min.y + halfHeight;
+      console.log(`[gltf] animated bbox: min.y=${animatedBox.min.y.toFixed(2)} max.y=${animatedBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)} (clip: ${pickClip.name}, forced +${halfHeight})`);
+      
+      // 🔧 디버그: 실제 그룹/모델의 월드 위치 확인
+      setTimeout(() => {
+        if (group.parent) {
+          const modelWorldPos = new THREE.Vector3();
+          modelRoot.getWorldPosition(modelWorldPos);
+          const groupWorldPos = new THREE.Vector3();
+          group.getWorldPosition(groupWorldPos);
+          const worldBox = new THREE.Box3().setFromObject(modelRoot);
+          console.log(`[gltf DEBUG] group.pos=(${groupWorldPos.x.toFixed(2)}, ${groupWorldPos.y.toFixed(2)}, ${groupWorldPos.z.toFixed(2)}) modelRoot.worldPos=(${modelWorldPos.x.toFixed(2)}, ${modelWorldPos.y.toFixed(2)}, ${modelWorldPos.z.toFixed(2)}) worldBox=[${worldBox.min.y.toFixed(2)} ~ ${worldBox.max.y.toFixed(2)}]`);
+        }
+      }, 500);
     }
   }
   return { modelRoot, mixer };
