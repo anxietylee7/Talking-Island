@@ -26,14 +26,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
 // 조명
-// 1) Ambient: 전체적으로 살짝 밝게 (PBR 캐릭터의 그림자 쪽이 완전히 검어지지 않게)
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
-// 2) Hemisphere: 하늘(위)과 바닥(아래)에서 각각 색상 입힘 — PBR 캐릭터에 자연스러운 색감 부여
-const hemiLight = new THREE.HemisphereLight(0xfff4e0, 0xa0c8a0, 0.6);
-hemiLight.position.set(0, 20, 0);
-scene.add(hemiLight);
-// 3) 태양광 (Directional): 그림자 투영용
 const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
 sunLight.position.set(10, 20, 5);
 sunLight.castShadow = true;
