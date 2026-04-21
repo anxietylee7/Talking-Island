@@ -371,6 +371,20 @@ function attachGltfToGroup(group, gltfScene, animations) {
   return { modelRoot, mixer };
 }
 
+// 폴백(프리미티브) 메시를 찾아 숨김. userData.isFallback=true로 표시된 메시만 대상.
+function hideFallbackMeshes(group) {
+  // 1순위: userData.fallbackMeshes 배열이 있으면 사용
+  if (group.userData.fallbackMeshes) {
+    group.userData.fallbackMeshes.forEach(m => m.visible = false);
+  }
+  // 2순위: 각 자식 메시에 userData.isFallback=true가 있으면 숨김 (안전장치)
+  group.traverse(obj => {
+    if (obj.isMesh && obj.userData.isFallback) {
+      obj.visible = false;
+    }
+  });
+}
+
 // NPC Group에 GLTF 모델을 비동기 로드 (실패 시 폴백으로 프리미티브 유지)
 function loadGltfForNpc(group, npcId) {
   const modelPath = NPC_MODEL_MAP[npcId];
@@ -381,8 +395,7 @@ function loadGltfForNpc(group, npcId) {
     const cached = gltfCache[npcId];
     const { mixer } = attachGltfToGroup(group, cached.scene, cached.animations);
     group.userData.mixer = mixer;
-    // 폴백 메시 숨기기
-    group.userData.fallbackMeshes?.forEach(m => m.visible = false);
+    hideFallbackMeshes(group);
     return;
   }
   
@@ -392,8 +405,7 @@ function loadGltfForNpc(group, npcId) {
       gltfCache[npcId] = { scene: gltf.scene, animations: gltf.animations };
       const { mixer } = attachGltfToGroup(group, gltf.scene, gltf.animations);
       group.userData.mixer = mixer;
-      // 로드 완료 후 폴백(기존 프리미티브) 숨기기
-      group.userData.fallbackMeshes?.forEach(m => m.visible = false);
+      hideFallbackMeshes(group);
       console.log(`[gltf] loaded ${modelPath}`, gltf.animations?.length ? `(${gltf.animations.length} animations)` : '(no animations)');
     },
     undefined,
@@ -494,6 +506,8 @@ function createNpcMesh(animal, npcId) {
   
   // 폴백 메시들 참조 저장 (GLTF 로드 성공 시 숨기기 위해)
   group.userData.fallbackMeshes = fallbackMeshes;
+  // 각 폴백 메시에도 플래그 직접 찍기 (userData 덮어써져도 살아남음)
+  fallbackMeshes.forEach(m => { m.userData.isFallback = true; });
   
   // 시나리오 NPC면 GLTF 모델 비동기 로드
   if (npcId) {
@@ -855,7 +869,9 @@ function spawnNpcMesh(npc) {
   const startX = fav.x + (Math.random() - 0.5) * 2.5;
   const startZ = fav.z + (Math.random() - 0.5) * 2.5;
   mesh.position.set(startX, 0, startZ);
-  mesh.userData = { type: 'npc', npcId: npc.id };
+  // ⚠️ userData를 덮어쓰지 않고 속성만 추가 (fallbackMeshes, mixer 등 보존)
+  mesh.userData.type = 'npc';
+  mesh.userData.npcId = npc.id;
   
   // location에 따라 씬 결정
   // 'outside'면 외부 scene에, 다른 값이면 아직 인테리어 진입 전이므로 일단 scene에 두되 보이지 않게
