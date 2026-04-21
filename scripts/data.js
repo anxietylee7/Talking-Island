@@ -21,6 +21,7 @@ const STORY_NPCS = [
     speechHabit: '~인 것 같아요', secretSkill: '풍경 사진',
     level: 2, affinity: 40, dreamProgress: 45,
     isStory: true, isMain: true,
+    homeLocation: 'photostudio',
   },
   {
     id: 'story_yami',
@@ -30,6 +31,7 @@ const STORY_NPCS = [
     speechHabit: '~다냥', secretSkill: '시 낭송',
     level: 3, affinity: 45, dreamProgress: 60,
     isStory: true, isMain: true,
+    homeLocation: 'outside',
   },
   {
     id: 'story_bamtol',
@@ -39,6 +41,7 @@ const STORY_NPCS = [
     speechHabit: '~쿵', secretSkill: '고서 감정',
     level: 2, affinity: 35, dreamProgress: 0,
     isStory: true, isMain: true,
+    homeLocation: 'bookstore',
   },
   {
     id: 'story_luru',
@@ -48,6 +51,7 @@ const STORY_NPCS = [
     speechHabit: '~뿅', secretSkill: '라떼아트',
     level: 1, affinity: 35, dreamProgress: 20,
     isStory: true,
+    homeLocation: 'cafe',
   },
   {
     id: 'story_somi',
@@ -57,6 +61,7 @@ const STORY_NPCS = [
     speechHabit: '~뿌', secretSkill: '꽃말 사전',
     level: 1, affinity: 35, dreamProgress: 15,
     isStory: true,
+    homeLocation: 'flower',
   },
 ];
 
