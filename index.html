@@ -135,6 +135,22 @@
     font-size: 11px; color: #8b5a2b;
   }
   
+  /* 시뮬레이션 중 UI 잠금 — 패널은 보이지만 클릭 불가, 반투명 */
+  body.sim-locked #top-bar,
+  body.sim-locked #left-panel,
+  body.sim-locked #right-panel,
+  body.sim-locked #hint {
+    pointer-events: none;
+    opacity: 0.5;
+    filter: grayscale(0.3);
+    transition: opacity 0.4s, filter 0.4s;
+  }
+  body:not(.sim-locked) #top-bar,
+  body:not(.sim-locked) #left-panel,
+  body:not(.sim-locked) #right-panel {
+    transition: opacity 0.4s, filter 0.4s;
+  }
+  
   #exit-interior {
     position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
     background: white; border: 2px solid #f4b6c1; padding: 8px 18px; border-radius: 999px;
@@ -356,6 +372,7 @@
   .zeta-msg {
     max-width: 85%; padding: 10px 14px; border-radius: 18px;
     font-size: 13px; line-height: 1.5; color: #6b4423;
+    flex-shrink: 0;
     animation: msgPop 0.3s ease-out;
   }
   @keyframes msgPop {
@@ -379,7 +396,8 @@
   /* 감정 이미지: NPC 메시지 위에 표시되는 작은 프로필 */
   .zeta-emotion-card {
     align-self: flex-start;
-    max-width: 200px; margin-top: 4px;
+    width: 200px; margin-top: 4px;
+    flex-shrink: 0;
     border-radius: 16px; overflow: hidden;
     background: white; border: 1px solid rgba(200, 170, 130, 0.2);
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
@@ -388,6 +406,7 @@
   .zeta-emotion-card img {
     display: block; width: 200px; height: 200px;
     object-fit: cover;
+    flex-shrink: 0;
   }
   .zeta-emotion-card-caption {
     padding: 6px 10px; font-size: 10px; color: #9c7a5a;
@@ -856,6 +875,69 @@ const state = {
 // NPC와 대화 가능한 최소 거리 (월드 유닛)
 const INTERACTION_RANGE = 3.0; // 약 3칸
 
+// 캐릭터 반경 (충돌용)
+const CHARACTER_RADIUS = 0.5;
+
+// =========================================================
+// 충돌 해소 — 이동 후 위치를 받아 장애물·다른 캐릭터와 겹치지 않도록 밀어냄
+// =========================================================
+// pos: {x, z} (수정됨), self: 제외할 자기 자신 (유저는 null, NPC는 npc id)
+function resolveCollisions(pos, self) {
+  // 월드 경계 내로 clamp
+  pos.x = Math.max(-19, Math.min(19, pos.x));
+  pos.z = Math.max(-19, Math.min(19, pos.z));
+  
+  // 1) 정적 장애물 (나무, 건물, 연못)
+  for (const ob of obstacles) {
+    // 유저는 자기 집 건물 안에 들어갈 수 있어야 하므로 예외
+    // (현재는 "건물 앞에서 클릭하면 내부 씬으로 전환"이라 외부에서 건물 위로 못 올라가게 막는게 맞음)
+    const dx = pos.x - ob.x;
+    const dz = pos.z - ob.z;
+    const dist = Math.hypot(dx, dz);
+    const minDist = ob.radius + CHARACTER_RADIUS;
+    if (dist < minDist && dist > 0.001) {
+      // 장애물 중심에서 멀어지는 방향으로 밀어내기
+      const push = (minDist - dist);
+      pos.x += (dx / dist) * push;
+      pos.z += (dz / dist) * push;
+    } else if (dist < 0.001) {
+      // 완전히 겹쳤으면 (거의 발생 안 하지만 안전) 임의 방향으로 밀기
+      pos.x += minDist;
+    }
+  }
+  
+  // 2) NPC 간 충돌
+  const selfRadius = CHARACTER_RADIUS;
+  const otherRadius = CHARACTER_RADIUS;
+  const minPairDist = selfRadius + otherRadius;
+  
+  // 유저와의 충돌 (self가 npc인 경우)
+  if (self !== 'user' && state.user && state.user.mesh) {
+    const dx = pos.x - state.user.mesh.position.x;
+    const dz = pos.z - state.user.mesh.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < minPairDist && dist > 0.001) {
+      const push = (minPairDist - dist);
+      pos.x += (dx / dist) * push;
+      pos.z += (dz / dist) * push;
+    }
+  }
+  
+  // NPC끼리의 충돌
+  for (const [otherId, other] of Object.entries(npcMeshes)) {
+    if (self === otherId) continue;
+    if (!other.mesh) continue;
+    const dx = pos.x - other.mesh.position.x;
+    const dz = pos.z - other.mesh.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < minPairDist && dist > 0.001) {
+      const push = (minPairDist - dist);
+      pos.x += (dx / dist) * push;
+      pos.z += (dz / dist) * push;
+    }
+  }
+}
+
 // =========================================================
 // 시나리오 스크립트 — 각 Day마다 밤에 벌어지는 NPC 동선
 // =========================================================
@@ -1021,11 +1103,15 @@ function showSimulationUI() {
   document.getElementById('sim-skip-btn').addEventListener('click', () => {
     endSimulation();
   });
+  // UI 잠금 (사이드 패널 클릭 비활성화)
+  document.body.classList.add('sim-locked');
 }
 
 function hideSimulationUI() {
   const ui = document.getElementById('simulation-ui');
   if (ui) ui.remove();
+  // UI 잠금 해제
+  document.body.classList.remove('sim-locked');
 }
 
 function setSimulationEventLabel(text) {
@@ -1443,12 +1529,28 @@ function openZeta(npcId) {
   // 기존 대화 이력 표시
   const messagesEl = document.getElementById('zeta-messages');
   messagesEl.innerHTML = '';
-  const history = state.chatHistory[npcId] || [];
+  let history = state.chatHistory[npcId] || [];
+  
+  // 첫 만남이면 NPC가 먼저 인사 (natural 감정)
   if (history.length === 0) {
     const sys = document.createElement('div');
     sys.className = 'zeta-msg system';
     sys.textContent = `${npc.name}와의 첫 만남`;
     messagesEl.appendChild(sys);
+    
+    // NPC별 첫 인사말 (말버릇 섞어서)
+    const greetings = {
+      'story_chaka': '어... 안녕하세요. 처음 뵙는 것 같아요.',
+      'story_yami': '안녕이다냥! 너도 책 좋아해?',
+      'story_bamtol': '어서 오쿵. 뭐 찾는 책이라도 있쿵?',
+      'story_luru': '어서 오세요뿅! 오늘은 뭐 마실래뿅?',
+      'story_somi': '안녕이뿌~ 오늘 동네 소식 들었뿌?',
+    };
+    const greeting = greetings[npcId] || `안녕! 반가워${npc.speechHabit || ''}`;
+    
+    // 인사말을 히스토리에 추가 (서버에 저장, 이후 대화 맥락으로 쓰임)
+    history = [{ role: 'npc', text: greeting, emotion: 'natural' }];
+    state.chatHistory[npcId] = history;
   }
   
   // 히스토리 렌더링 — NPC 감정이 바뀌는 지점에 이미지 카드 삽입
@@ -1867,6 +1969,9 @@ pond.position.set(pondLoc.x, 0.05, pondLoc.z);
 scene.add(pond);
 
 // 나무
+// 충돌용 장애물 리스트 (원형 — x, z, radius)
+const obstacles = [];
+
 function createTree(x, z) {
   const tree = new THREE.Group();
   const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 1.2, 8);
@@ -1887,8 +1992,11 @@ function createTree(x, z) {
 for (let i = 0; i < 18; i++) {
   const a = (i / 18) * Math.PI * 2;
   const r = 13 + Math.random() * 5;
-  const t = createTree(Math.cos(a) * r, Math.sin(a) * r);
+  const tx = Math.cos(a) * r;
+  const tz = Math.sin(a) * r;
+  const t = createTree(tx, tz);
   scene.add(t);
+  obstacles.push({ x: tx, z: tz, radius: 0.7, type: 'tree' });
 }
 // 산재된 작은 나무
 for (let i = 0; i < 8; i++) {
@@ -1896,9 +2004,25 @@ for (let i = 0; i < 8; i++) {
   const z = (Math.random() - 0.5) * 18;
   if (Math.hypot(x, z) > 3 && LOCATIONS.every(l => Math.hypot(l.x-x, l.z-z) > 3)) {
     const t = createTree(x, z);
-    t.scale.setScalar(0.6 + Math.random() * 0.3);
+    const scale = 0.6 + Math.random() * 0.3;
+    t.scale.setScalar(scale);
     scene.add(t);
+    obstacles.push({ x, z, radius: 0.55 * scale, type: 'tree' });
   }
+}
+
+// 건물들을 장애물에 추가 (크기: 3x3 정방형 → 반경 1.8 근사)
+for (const loc of LOCATIONS) {
+  if (loc.interior) {
+    // 유저 집은 반경 조금 더 큼 (3.4 사이즈)
+    const radius = loc.name === '우리집' ? 2.0 : 1.8;
+    obstacles.push({ x: loc.x, z: loc.z, radius, type: 'building', loc });
+  }
+}
+// 연못도 장애물 (건너기 금지)
+const pondLocObstacle = LOCATIONS.find(l => l.name === '연못');
+if (pondLocObstacle) {
+  obstacles.push({ x: pondLocObstacle.x, z: pondLocObstacle.z, radius: 2.4, type: 'pond' });
 }
 
 // 꽃
@@ -2257,14 +2381,37 @@ function updateUser(dt) {
   // 이동
   const dirX = dx / distance;
   const dirZ = dz / distance;
-  u.mesh.position.x += dirX * u.speed * dt;
-  u.mesh.position.z += dirZ * u.speed * dt;
+  const newX = u.mesh.position.x + dirX * u.speed * dt;
+  const newZ = u.mesh.position.z + dirZ * u.speed * dt;
+  
+  // 충돌 해소 — 건물·나무·연못·다른 NPC와 겹치지 않도록 밀어냄
+  const resolved = { x: newX, z: newZ };
+  resolveCollisions(resolved, 'user');
+  
+  u.mesh.position.x = resolved.x;
+  u.mesh.position.z = resolved.z;
   u.mesh.rotation.y = Math.atan2(dirX, dirZ);
   // 걷기 바운스
   u.bounce += dt * 8;
   u.mesh.position.y = Math.abs(Math.sin(u.bounce)) * 0.06;
   u.position.x = u.mesh.position.x;
   u.position.z = u.mesh.position.z;
+  
+  // 목적지가 장애물 안쪽이라 계속 접근 불가인 경우 타임아웃으로 멈춤
+  // (장애물에 막혀서 제자리에 있는 경우 0.5초 이상 지나면 포기)
+  if (!u._prevPos) u._prevPos = { x: u.mesh.position.x, z: u.mesh.position.z, t: performance.now() };
+  const moved = Math.hypot(u.mesh.position.x - u._prevPos.x, u.mesh.position.z - u._prevPos.z);
+  const elapsed = performance.now() - u._prevPos.t;
+  if (moved > 0.3) {
+    u._prevPos = { x: u.mesh.position.x, z: u.mesh.position.z, t: performance.now() };
+  } else if (elapsed > 800) {
+    // 0.8초 동안 거의 못 움직였으면 포기
+    console.log('[user] stuck, giving up');
+    u.moving = false;
+    u.targetPos = null;
+    hideDestinationMarker();
+    u._prevPos = null;
+  }
 }
 
 // NPC까지의 거리 계산 (유저 메시 기준)
@@ -3124,8 +3271,13 @@ function updateNpcs(dt) {
       } else {
         dir.normalize();
         const speed = 2.0;
-        n.mesh.position.x += dir.x * speed * dt;
-        n.mesh.position.z += dir.z * speed * dt;
+        const newX = n.mesh.position.x + dir.x * speed * dt;
+        const newZ = n.mesh.position.z + dir.z * speed * dt;
+        // 충돌 해소 (자기 자신 제외)
+        const resolved = { x: newX, z: newZ };
+        resolveCollisions(resolved, id);
+        n.mesh.position.x = resolved.x;
+        n.mesh.position.z = resolved.z;
         const targetAngle = Math.atan2(dir.x, dir.z);
         n.mesh.rotation.y = targetAngle;
         n.bounce += dt * 10;
@@ -3351,6 +3503,8 @@ renderer.domElement.addEventListener('mousedown', e => {
 });
 renderer.domElement.addEventListener('click', e => {
   if (!mouseDownPos || Math.hypot(e.clientX - mouseDownPos.x, e.clientY - mouseDownPos.y) > 5) return;
+  // 시뮬레이션 중에는 NPC/건물/바닥 클릭 금지 (카메라 드래그는 따로, 허용)
+  if (state.simulation.active) return;
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
@@ -4001,6 +4155,11 @@ function renderNpcList() {
   `).join('');
   list.querySelectorAll('.npc-card').forEach(el => {
     el.addEventListener('click', () => {
+      // 시뮬레이션 중이면 상호작용 차단
+      if (state.simulation.active) {
+        showNotification('💤 자는 동안은 상호작용할 수 없어요');
+        return;
+      }
       const npcId = parseInt(el.dataset.npcId);
       // 인테리어에 있으면 근접 체크 없이 바로 대화
       if (state.viewMode === 'interior') {
