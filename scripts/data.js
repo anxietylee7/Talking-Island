@@ -82,10 +82,15 @@ const BOOKSTORE_STORY = {
 
 const LOCATIONS = [
   { name: '광장', x: 0, z: 0, color: 0xfff0cc, emoji: '⛲' },
-  { name: '사진관', x: -8, z: -6, color: 0xffd6cc, emoji: '📸', interior: 'photostudio' },
-  { name: '카페', x: 7, z: -5, color: 0xd4a5f5, emoji: '☕', interior: 'cafe' },
-  { name: '꽃가게', x: -7, z: 7, color: 0xfad4d8, emoji: '🌸', interior: 'flower' },
-  { name: '서점', x: 8, z: 6, color: 0xc9dcf5, emoji: '📚', interior: 'bookstore' },
+  { name: '사진관', x: -8, z: -6, color: 0xffd6cc, emoji: '📸', interior: 'photostudio',
+    door: { x: -8, z: -3.5 } },
+  { name: '카페', x: 7, z: -5, color: 0xd4a5f5, emoji: '☕', interior: 'cafe',
+    door: { x: 7, z: -2.5 } },
+  { name: '꽃가게', x: -7, z: 7, color: 0xfad4d8, emoji: '🌸', interior: 'flower',
+    door: { x: -7, z: 4.5 } },
+  { name: '서점', x: 8, z: 6, color: 0xc9dcf5, emoji: '📚', interior: 'bookstore',
+    door: { x: 8, z: 3.5 } },
   { name: '연못', x: 0, z: 9, color: 0xa8d0dc, emoji: '🪷' },
-  { name: '우리집', x: 0, z: -11, color: 0xfff5e1, emoji: '🏠', interior: 'home', userOnly: true },
+  { name: '우리집', x: 0, z: -11, color: 0xfff5e1, emoji: '🏠', interior: 'home', userOnly: true,
+    door: { x: 0, z: -8.5 } },
 ];
