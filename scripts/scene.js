@@ -323,16 +323,25 @@ function attachGltfToGroup(group, gltfScene, animations) {
   // 원본 클론 (같은 모델 여러 인스턴스 위해)
   const modelRoot = gltfScene.clone(true);
   
-  // 크기 자동 스케일링: 바운딩박스 계산해서 높이 기준으로 스케일 적용
+  // 매트릭스 강제 업데이트 후 바운딩박스 계산
+  modelRoot.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(modelRoot);
   const size = new THREE.Vector3();
   box.getSize(size);
+  
+  // 크기 자동 스케일링: 높이 기준
   const scale = size.y > 0.01 ? TARGET_NPC_HEIGHT / size.y : 1;
   modelRoot.scale.setScalar(scale);
   
-  // 바닥 정렬: 바운딩박스 최하단이 y=0 되도록
+  // 스케일 적용 후 다시 매트릭스 업데이트 + 박스 재계산
+  modelRoot.updateMatrixWorld(true);
   const scaledBox = new THREE.Box3().setFromObject(modelRoot);
+  
+  // 바닥 정렬: 스케일 적용 후의 최하단이 y=0이 되도록
+  // scaledBox.min.y가 양수면 밑으로, 음수면 위로 끌어올림
   modelRoot.position.y = -scaledBox.min.y;
+  
+  console.log(`[gltf] model bbox after scale: min.y=${scaledBox.min.y.toFixed(2)} max.y=${scaledBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)}`);
   
   // 그림자
   modelRoot.traverse(obj => {
