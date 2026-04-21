@@ -707,9 +707,19 @@ function spawnNpcMesh(npc) {
   const startZ = fav.z + (Math.random() - 0.5) * 2.5;
   mesh.position.set(startX, 0, startZ);
   mesh.userData = { type: 'npc', npcId: npc.id };
-  scene.add(mesh);
   
-  // 이름 말풍선 DOM (항상 표시)
+  // location에 따라 씬 결정
+  // 'outside'면 외부 scene에, 다른 값이면 아직 인테리어 진입 전이므로 일단 scene에 두되 보이지 않게
+  const loc = npc.location || 'outside';
+  if (loc === 'outside') {
+    scene.add(mesh);
+    mesh.visible = true;
+  } else {
+    scene.add(mesh);
+    mesh.visible = false; // 외부 씬에서는 안 보임
+  }
+  
+  // 이름 말풍선 DOM (항상 표시, 하지만 location이 현재 뷰와 맞을 때만)
   const bubble = document.createElement('div');
   bubble.className = 'speech-bubble' + (npc.isStory ? ' story' : '');
   bubble.textContent = `${animal.emoji} ${npc.name}`;
@@ -726,6 +736,7 @@ function spawnNpcMesh(npc) {
     bounce: 0,
     chatMessage: null,
     chatTimer: 0,
+    currentScene: loc === 'outside' ? 'outside' : 'waiting', // 현재 어느 씬에 속해있는지 추적
   };
   const t = npcMeshes[npc.id].target;
   npcMeshes[npc.id].targetPos = new THREE.Vector3(t.x + (Math.random()-0.5)*1.5, 0, t.z + (Math.random()-0.5)*1.5);
@@ -804,9 +815,6 @@ function updateInteriorLighting() {
 
 const interiorObjects = new THREE.Group();
 interiorScene.add(interiorObjects);
-
-// 현재 인테리어에 있는 NPC 메시들
-const interiorNpcMeshes = {}; // id -> {mesh, bubble, target, state, idleTimer, bounce}
 
 function makeFloor(color) {
   const floorGeo = new THREE.PlaneGeometry(12, 12);
@@ -1317,9 +1325,46 @@ function enterInterior(loc) {
   state.currentInterior = loc;
   buildInterior(loc.interior);
   
-  // 인테리어 입장 시 이 장소 선호 NPC들 추가 (유저 집은 제외)
+  // 외부 씬의 모든 NPC 말풍선 숨기기
+  Object.values(npcMeshes).forEach(n => n.speechBubbleEl.classList.add('hide'));
+  
+  // 인테리어에 표시할 NPC들: location이 이 건물의 interior 값과 일치하는 NPC들
   if (!loc.userOnly) {
-    spawnInteriorNpcs(loc);
+    const targetLocation = loc.interior; // 예: 'bookstore'
+    Object.entries(npcMeshes).forEach(([id, m]) => {
+      const npc = state.npcs.find(n => n.id == id);
+      if (!npc) return;
+      if (npc.location === targetLocation) {
+        // 이 NPC는 이 건물 안에 있어야 함 → interiorScene으로 이동
+        scene.remove(m.mesh);
+        interiorScene.add(m.mesh);
+        m.mesh.visible = true;
+        m.currentScene = 'interior';
+        // 인테리어 내 초기 위치 (랜덤)
+        m.mesh.position.set(
+          (Math.random() - 0.5) * 6,
+          0,
+          (Math.random() - 0.5) * 6
+        );
+        m.targetPos = new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          0,
+          (Math.random() - 0.5) * 6
+        );
+        m.state = 'walking';
+        // 말풍선 보이기
+        m.speechBubbleEl.classList.remove('hide');
+      } else {
+        // 이 NPC는 이 건물에 없음 → 외부 씬에 남겨두고 안 보이게
+        if (m.currentScene === 'interior') {
+          // 다른 건물 들어갔다가 나와서 이 건물 들어온 경우: 이전 건물에 그대로 두기 (이론상 발생 X)
+          interiorScene.remove(m.mesh);
+          scene.add(m.mesh);
+          m.currentScene = 'outside';
+        }
+        m.mesh.visible = false;
+      }
+    });
   }
   
   // UI 업데이트
@@ -1329,9 +1374,6 @@ function enterInterior(loc) {
   document.getElementById('interior-name').textContent = loc.name;
   titleEl.classList.add('show');
   document.getElementById('hint').style.display = 'none';
-  
-  // 외부 말풍선 숨기기
-  Object.values(npcMeshes).forEach(n => n.speechBubbleEl.classList.add('hide'));
   
   // 카메라 인테리어용 위치
   cameraAngle = 0;
@@ -1344,13 +1386,36 @@ function enterInterior(loc) {
 function exitInterior() {
   state.viewMode = 'village';
   state.currentInterior = null;
-  // 인테리어 NPC 제거
-  Object.keys(interiorNpcMeshes).forEach(id => {
-    const n = interiorNpcMeshes[id];
-    interiorScene.remove(n.mesh);
-    n.speechBubbleEl.remove();
-    delete interiorNpcMeshes[id];
+  
+  // 인테리어 씬에 있던 NPC들을 원래 location 기준으로 되돌리기
+  // - location이 'outside'로 바뀐 NPC는 외부 scene으로 이동 + 보이게
+  // - location이 여전히 해당 건물이면 외부 scene으로 되돌리되 보이지 않게 유지 (다음 진입 시 다시 보이게)
+  Object.entries(npcMeshes).forEach(([id, m]) => {
+    const npc = state.npcs.find(n => n.id == id);
+    if (!npc) return;
+    if (m.currentScene === 'interior') {
+      // 인테리어 씬에서 외부 씬으로 이동
+      interiorScene.remove(m.mesh);
+      scene.add(m.mesh);
+      m.currentScene = 'outside';
+    }
+    // location에 따라 visible 조정
+    if (npc.location === 'outside') {
+      m.mesh.visible = true;
+      // 외부로 나올 때 위치를 favorite 근처로 복원
+      const fav = getFavoriteLocation(npc);
+      m.mesh.position.set(
+        fav.x + (Math.random() - 0.5) * 2.5,
+        0,
+        fav.z + (Math.random() - 0.5) * 2.5
+      );
+      m.speechBubbleEl.classList.remove('hide');
+    } else {
+      m.mesh.visible = false;
+      m.speechBubbleEl.classList.add('hide');
+    }
   });
+  
   document.getElementById('exit-interior').classList.remove('show');
   document.getElementById('interior-title').classList.remove('show');
   document.getElementById('hint').style.display = 'block';
@@ -1362,101 +1427,6 @@ function exitInterior() {
   updateCamera();
 }
 
-function spawnInteriorNpcs(loc) {
-  // 이 장소를 선호하는 NPC 찾기
-  const matchingNpcs = state.npcs.filter(npc => {
-    const fav = getFavoriteLocation(npc);
-    return fav.name === loc.name;
-  });
-  // 없으면 랜덤 NPC 1-2명
-  let npcsToShow = matchingNpcs;
-  if (npcsToShow.length === 0 && state.npcs.length > 0) {
-    // 확률적으로 1명 보여주기
-    if (Math.random() < 0.5) {
-      npcsToShow = [state.npcs[Math.floor(Math.random() * state.npcs.length)]];
-    }
-  }
-  npcsToShow = npcsToShow.slice(0, 3); // 최대 3명
-  
-  npcsToShow.forEach((npc, idx) => {
-    const animal = ANIMALS.find(a => a.species === npc.species);
-    const mesh = createNpcMesh(animal);
-    // 실내 위치 배치
-    const positions = [
-      [0, 0, 2], [2, 0, 2], [-2, 0, 2], [0, 0, -2], [3, 0, 0],
-    ];
-    const pos = positions[idx % positions.length];
-    mesh.position.set(pos[0], 0, pos[2]);
-    mesh.userData = { type: 'npc', npcId: npc.id };
-    interiorScene.add(mesh);
-    
-    const bubble = document.createElement('div');
-    bubble.className = 'speech-bubble';
-    bubble.textContent = `${animal.emoji} ${npc.name}`;
-    document.getElementById('app').appendChild(bubble);
-    
-    interiorNpcMeshes[npc.id] = {
-      mesh, speechBubbleEl: bubble,
-      targetPos: new THREE.Vector3(pos[0], 0, pos[2]),
-      state: 'idle', idleTimer: 2 + Math.random() * 3,
-      bounce: 0, showNameTimer: 3,
-    };
-  });
-}
-
-function updateInteriorNpcs(dt) {
-  Object.entries(interiorNpcMeshes).forEach(([id, n]) => {
-    const npc = state.npcs.find(x => x.id == id);
-    if (!npc) return;
-    n.showNameTimer -= dt;
-    
-    if (n.state === 'walking' && n.targetPos) {
-      const dir = new THREE.Vector3().subVectors(n.targetPos, n.mesh.position);
-      dir.y = 0;
-      const distance = dir.length();
-      if (distance < 0.3) {
-        n.state = 'idle';
-        n.idleTimer = 2 + Math.random() * 3;
-      } else {
-        dir.normalize();
-        n.mesh.position.x += dir.x * 1.3 * dt;
-        n.mesh.position.z += dir.z * 1.3 * dt;
-        n.mesh.rotation.y = Math.atan2(dir.x, dir.z);
-        n.bounce += dt * 10;
-        n.mesh.position.y = Math.abs(Math.sin(n.bounce)) * 0.06;
-      }
-    } else if (n.state === 'idle') {
-      n.mesh.position.y = 0;
-      n.idleTimer -= dt;
-      // 가끔 돌아보기
-      n.mesh.rotation.y += Math.sin(performance.now() * 0.001) * 0.002;
-      if (n.idleTimer <= 0) {
-        // 실내 안에서 새 목표
-        const positions = [[0, 0, 2], [2, 0, 2], [-2, 0, 2], [0, 0, -2], [3, 0, 1], [-3, 0, 1]];
-        const pick = positions[Math.floor(Math.random() * positions.length)];
-        n.targetPos = new THREE.Vector3(pick[0] + (Math.random()-0.5)*0.5, 0, pick[2] + (Math.random()-0.5)*0.5);
-        n.state = 'walking';
-      }
-    }
-    
-    // 말풍선 위치
-    const vec = n.mesh.position.clone();
-    vec.y += 2;
-    vec.project(camera);
-    const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
-    n.speechBubbleEl.style.left = x + 'px';
-    n.speechBubbleEl.style.top = y + 'px';
-    
-    const shouldShow = state.selectedNpcId == id || n.showNameTimer > 0;
-    if (shouldShow && vec.z < 1) {
-      n.speechBubbleEl.classList.add('show');
-    } else {
-      n.speechBubbleEl.classList.remove('show');
-    }
-  });
-}
-
 // =========================================================
 // NPC 업데이트 루프 (매 프레임)
 // =========================================================
@@ -1464,6 +1434,20 @@ function updateNpcs(dt) {
   Object.entries(npcMeshes).forEach(([id, n]) => {
     const npc = state.npcs.find(x => x.id == id);
     if (!npc) return;
+    
+    // 메시가 visible=false면 이동/말풍선 처리 건너뜀
+    if (!n.mesh.visible) {
+      n.speechBubbleEl.classList.add('hide');
+      return;
+    }
+    
+    // 현재 씬이 뷰 모드와 일치해야 메시 처리
+    // (예: interior씬에 있는 NPC는 viewMode='interior'일 때만 움직임)
+    const viewInterior = state.viewMode === 'interior';
+    if ((n.currentScene === 'interior') !== viewInterior) {
+      n.speechBubbleEl.classList.add('hide');
+      return;
+    }
     
     // 채팅 메시지 타이머
     if (n.chatTimer > 0) {
@@ -1475,8 +1459,8 @@ function updateNpcs(dt) {
       }
     }
     
-    if (state.phase === 'night' && !state.simulation.active) {
-      // 시뮬레이션 중이 아닐 때만 자동 귀가 (시뮬레이션 중엔 스크립트가 제어)
+    // 밤 자동 귀가는 외부에서만
+    if (n.currentScene === 'outside' && state.phase === 'night' && !state.simulation.active) {
       const home = LOCATIONS[1 + (parseInt(id) % 4)];
       n.targetPos = new THREE.Vector3(home.x, 0, home.z);
       n.state = 'walking';
@@ -1496,14 +1480,20 @@ function updateNpcs(dt) {
         n.idleTimer = 1.5 + Math.random() * 3;
       } else {
         dir.normalize();
-        const speed = 2.0;
+        const speed = n.currentScene === 'interior' ? 1.3 : 2.0;
         const newX = n.mesh.position.x + dir.x * speed * dt;
         const newZ = n.mesh.position.z + dir.z * speed * dt;
-        // 충돌 해소 (자기 자신 제외)
-        const resolved = { x: newX, z: newZ };
-        resolveCollisions(resolved, id);
-        n.mesh.position.x = resolved.x;
-        n.mesh.position.z = resolved.z;
+        // 충돌 해소는 외부에서만 (인테리어는 좁아서 오브젝트 충돌은 생략, 단순 clamp)
+        if (n.currentScene === 'outside') {
+          const resolved = { x: newX, z: newZ };
+          resolveCollisions(resolved, id);
+          n.mesh.position.x = resolved.x;
+          n.mesh.position.z = resolved.z;
+        } else {
+          // 인테리어 안: 벽(±5.5) 안쪽으로만
+          n.mesh.position.x = Math.max(-5, Math.min(5, newX));
+          n.mesh.position.z = Math.max(-5, Math.min(5, newZ));
+        }
         const targetAngle = Math.atan2(dir.x, dir.z);
         n.mesh.rotation.y = targetAngle;
         n.bounce += dt * 10;
@@ -1512,23 +1502,36 @@ function updateNpcs(dt) {
     } else if (n.state === 'idle') {
       n.mesh.position.y = 0;
       n.idleTimer -= dt;
-      Object.entries(npcMeshes).forEach(([otherId, other]) => {
-        if (otherId === id) return;
-        const d = n.mesh.position.distanceTo(other.mesh.position);
-        if (d < 1.5 && other.state === 'idle' && Math.random() < 0.03) {
-          n.state = 'talking';
-          other.state = 'talking';
-          n.idleTimer = 3; other.idleTimer = 3;
-          const angleA = Math.atan2(other.mesh.position.x - n.mesh.position.x, other.mesh.position.z - n.mesh.position.z);
-          n.mesh.rotation.y = angleA;
-          other.mesh.rotation.y = angleA + Math.PI;
-        }
-      });
+      // 외부에서만 다른 NPC와 대화 상태 진입
+      if (n.currentScene === 'outside') {
+        Object.entries(npcMeshes).forEach(([otherId, other]) => {
+          if (otherId === id) return;
+          if (other.currentScene !== 'outside') return;
+          const d = n.mesh.position.distanceTo(other.mesh.position);
+          if (d < 1.5 && other.state === 'idle' && Math.random() < 0.03) {
+            n.state = 'talking';
+            other.state = 'talking';
+            n.idleTimer = 3; other.idleTimer = 3;
+            const angleA = Math.atan2(other.mesh.position.x - n.mesh.position.x, other.mesh.position.z - n.mesh.position.z);
+            n.mesh.rotation.y = angleA;
+            other.mesh.rotation.y = angleA + Math.PI;
+          }
+        });
+      }
       if (n.idleTimer <= 0) {
-        const useFav = Math.random() < 0.6;
-        const target = useFav ? getFavoriteLocation(npc) : LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
-        n.target = target;
-        n.targetPos = new THREE.Vector3(target.x + (Math.random()-0.5)*1.5, 0, target.z + (Math.random()-0.5)*1.5);
+        if (n.currentScene === 'outside') {
+          const useFav = Math.random() < 0.6;
+          const target = useFav ? getFavoriteLocation(npc) : LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
+          n.target = target;
+          n.targetPos = new THREE.Vector3(target.x + (Math.random()-0.5)*1.5, 0, target.z + (Math.random()-0.5)*1.5);
+        } else {
+          // 인테리어 안에서 새 목표 (벽 안쪽 랜덤)
+          n.targetPos = new THREE.Vector3(
+            (Math.random() - 0.5) * 8,
+            0,
+            (Math.random() - 0.5) * 8
+          );
+        }
         n.state = 'walking';
       }
     } else if (n.state === 'talking') {
@@ -1756,8 +1759,9 @@ renderer.domElement.addEventListener('click', e => {
         return;
       }
     }
-    // 2) NPC 클릭 (어디서든 가능)
-    const objects = Object.values(interiorNpcMeshes).map(n => n.mesh);
+    // 2) NPC 클릭 (어디서든 가능) — 현재 interior 씬에 있는 NPC만
+    const interiorNpcs = Object.values(npcMeshes).filter(n => n.currentScene === 'interior');
+    const objects = interiorNpcs.map(n => n.mesh);
     const intersects = raycaster.intersectObjects(objects, true);
     if (intersects.length > 0) {
       let obj = intersects[0].object;
