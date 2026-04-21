@@ -627,7 +627,7 @@ function detectEmotion(text, npcId) {
   // 놀람
   if (/!!|놀라|헉|어머|진짜요\?|정말\?|이럴수가|충격/.test(text)) return 'surprised';
   // 분노 (밤톨·야미)
-  if (/화나|짜증|그만|싫어|용납|감히|뭐야|!!|쿵!|어쩌자는/.test(text)) {
+  if (/화나|짜증|그만|싫어|용납|감히|뭐야|!!|어쩌자는/.test(text)) {
     if (npcId === 'story_bamtol') return 'angry';
     if (npcId === 'story_yami') return 'angry';
   }
@@ -707,11 +707,11 @@ function openZeta(npcId) {
     
     // NPC별 첫 인사말 (말버릇 섞어서)
     const greetings = {
-      'story_chaka': '어... 안녕하세요. 처음 뵙는 것 같아요.',
-      'story_yami': '안녕이다냥! 너도 책 좋아해?',
-      'story_bamtol': '어서 오쿵. 뭐 찾는 책이라도 있쿵?',
-      'story_luru': '어서 오세요뿅! 오늘은 뭐 마실래뿅?',
-      'story_somi': '안녕이뿌~ 오늘 동네 소식 들었뿌?',
+      'story_chaka': '어... 안녕하세요. 처음 뵙는 것 같네요.',
+      'story_yami': '안녕! 너도 책 좋아하지?',
+      'story_bamtol': '어서 오는군. 뭐 찾는 책이라도 있는군?',
+      'story_luru': '어서 오세요! 오늘은 뭐 마실래요?',
+      'story_somi': '안녕~ 오늘 동네 소식 들었음~?',
     };
     const greeting = greetings[npcId] || `안녕! 반가워${npc.speechHabit || ''}`;
     
@@ -793,13 +793,13 @@ window.__zetaSend = async function() {
       } else if (npc.id === 'story_bamtol') {
         storyContext = `\n\n[배경 - 너는 서점 주인 밤톨이다]\n- 너는 야미가 책을 "훔쳤다"고 믿고 있다. 차카의 야경 사진 한 장이 근거다.\n- 사실은 야미가 예약한 책이고, 너의 장부에 기록이 있다. 하지만 감정이 앞서서 확인을 못 하고 있다.\n- 심지어 장부에 기록되지 않은 다른 책 한 권도 사라져서 더 의심하고 있다.\n- ${stage === 'day2_triggered' ? '지금 화가 나 있고, 누구든 이 얘기를 꺼내면 방어적이다.' : ''}\n- ${stage === 'quest_active' ? '야미가 독서 모임 장소를 빌려달라고 했지만 거절했다.' : ''}`;
       }
-      storyContext += `\n\n답변 시작 또는 끝에 [감정:natural|happy|sad|surprised|angry|thinking] 태그를 붙여서 네 현재 감정을 표현해. 예: "그건 말이다쿵... [감정:angry]"`;
+      storyContext += `\n\n답변 시작 또는 끝에 [감정:natural|happy|sad|surprised|angry|thinking] 태그를 붙여서 네 현재 감정을 표현해. 예: "그건 말이지... [감정:angry]"`;
     }
     
-    const system = `너는 동물 주민 동네 게임의 NPC다. 귀엽고 캐주얼한 톤으로 짧게 대답해.
+    const system = `너는 아기자기한 동네 게임의 NPC다. 캐주얼하고 자연스러운 톤으로 짧게 대답해.
 
 너의 정보:
-- 이름: ${npc.name} (${npc.species} ${npc.emoji})
+- 이름: ${npc.name}
 - 직업: ${npc.job}
 - 꿈: ${npc.dream} (${npc.dreamProgress}%)
 - 성격: ${npc.personality}
