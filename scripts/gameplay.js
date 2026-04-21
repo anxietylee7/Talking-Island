@@ -3,7 +3,7 @@ function selectNpc(npcId) {
   if (!npc) return;
   
   // 시나리오 NPC는 제타 스타일 팝업 채팅
-  if (npc.isStory && ['story_chaka', 'story_yami', 'story_bamtol'].includes(npc.id)) {
+  if (npc.isStory && ['chaka', 'yami', 'bamtol'].includes(npc.id)) {
     openZeta(npc.id);
     return;
   }
@@ -25,72 +25,11 @@ function selectNpc(npcId) {
   }
 }
 
-async function rollGacha() {
-  if (state.loading) return;
-  setLoading(true, '새 주민을 부르는 중...');
-  try {
-    const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
-    const existing = state.npcs.filter(n => n.species === animal.species);
-    
-    if (existing.length > 0 && Math.random() < 0.5) {
-      const target = existing[Math.floor(Math.random() * existing.length)];
-      if (target.level < 3) {
-        target.level += 1;
-        if (target.level === 2 && target.dreamProgress === 0) target.dreamProgress = 30;
-        showNotification(`${animal.emoji} ${target.name}이(가) Lv.${target.level}로 성장했어요!`);
-        renderNpcList();
-        renderCounts();
-        setLoading(false);
-        return;
-      }
-    }
-    
-    const prompt = `동물 주민 동네 게임의 새 NPC를 JSON으로 생성해줘.
-
-종족: ${animal.species} ${animal.emoji}
-종족특성: ${animal.trait}
-말투특성: ${animal.speechTraits}
-
-현재 동네 NPC: ${state.npcs.map(n => `${n.name}(${n.species},${n.job})`).join(', ') || '없음'}
-
-다음 JSON 형식으로만 답해:
-{
-  "name": "이름 (한글 2-3자, 귀엽게)",
-  "job": "직업 (구체적으로)",
-  "dream": "꿈 (직업에서 한 단계 위의 목표)",
-  "personality": "성격 한 줄",
-  "speechHabit": "말버릇 (예: ~네요, ~지, ~군, ~음)",
-  "secretSkill": "비밀 특기"
-}`;
-    
-    const data = await callClaude(
-      '너는 귀엽고 캐주얼한 동물 주민 게임의 캐릭터 디자이너야.',
-      prompt, true
-    );
-    
-    const newNpc = {
-      id: Date.now(),
-      species: animal.species,
-      emoji: animal.emoji,
-      color: animal.color,
-      trait: animal.trait,
-      ...data,
-      level: 1,
-      affinity: 30,
-      dreamProgress: 0,
-      location: 'outside',
-    };
-    state.npcs.push(newNpc);
-    spawnNpcMesh(newNpc);
-    showNotification(`${newNpc.emoji} ${newNpc.name}이(가) 동네에 왔어요!`);
-    renderNpcList();
-    renderCounts();
-  } catch (err) {
-    showNotification('오류가 발생했어요.');
-  } finally {
-    setLoading(false);
-  }
-}
+// =========================================================
+// (제거됨) rollGacha 함수
+// - 기존 동물 풀(ANIMALS) 기반 랜덤 가챠 로직은 더 이상 사용하지 않음
+// - 시나리오 NPC 5명이 게임 시작 시 고정 등장하는 구조로 변경됨
+// =========================================================
 
 async function sendChatMessage(text) {
   console.log('[sendChatMessage] start', { text, selectedNpcId: state.selectedNpcId, loading: state.loading });
@@ -112,11 +51,11 @@ async function sendChatMessage(text) {
     let storyContext = '';
     if (npc.isStory) {
       const stage = state.storyStage;
-      if (npc.id === 'story_chaka') {
+      if (npc.id === 'chaka') {
         storyContext = `\n\n[배경 - 너는 사진사 차카다]\n- 너는 어젯밤 사진관 앞에서 야경 사진을 찍었다.\n- 나중에 사진을 본 밤톨이 "야미가 책을 훔쳤다"고 오해했다는 걸 ${stage === 'day1' ? '아직 모른다' : '알게 되었다'}.\n- 너는 단지 야경이 아름다워서 찍었을 뿐이고, 야미가 뭘 하는지는 잘 못 봤다.\n- ${stage === 'quest_active' || stage === 'day2_triggered' ? '지금은 상황이 혼란스러워서 사진을 내려야 할지 고민 중이다.' : ''}`;
-      } else if (npc.id === 'story_yami') {
+      } else if (npc.id === 'yami') {
         storyContext = `\n\n[배경 - 너는 문학도 학생 야미다]\n- 너는 밤톨 서점에 책을 예약했고, 뒷문 열쇠를 받아 밤에 책을 픽업했다. 훔친 게 아니다.\n- 독서 모임을 준비 중이고, 첫 모임 장소로 밤톨 서점을 빌리기로 했었다.\n- ${stage === 'day2_triggered' ? '오늘 도둑이라는 소문을 듣고 큰 충격을 받았다. 억울하고 슬프다.' : ''}\n- ${stage === 'quest_active' ? '밤톨이 독서 모임 장소 대여를 거절했다. 꿈이 흔들린다.' : ''}\n- ${stage === 'resolved' ? '사건이 마무리됐다.' : ''}`;
-      } else if (npc.id === 'story_bamtol') {
+      } else if (npc.id === 'bamtol') {
         storyContext = `\n\n[배경 - 너는 서점 주인 밤톨이다]\n- 너는 야미가 책을 "훔쳤다"고 믿고 있다. 차카의 야경 사진 한 장이 근거다.\n- 사실은 야미가 예약한 책이고, 너의 장부에 기록이 있다. 하지만 감정이 앞서서 확인을 못 하고 있다.\n- ${stage === 'day2_triggered' ? '지금 화가 나 있고, 누구든 이 얘기를 꺼내면 방어적이다.' : ''}\n- ${stage === 'quest_active' ? '야미가 독서 모임 장소를 빌려달라고 했지만 거절했다.' : ''}`;
       }
     }
@@ -174,10 +113,7 @@ async function sendChatMessage(text) {
 }
 
 async function advanceToNightAndMorning() {
-  if (state.npcs.length === 0) {
-    showNotification('먼저 주민을 한 명 이상 모아야 해요!');
-    return;
-  }
+  // 5명 고정 NPC 구조라 "주민 0명" 체크는 더 이상 필요 없음
   if (state.loading) return;
   
   state.phase = 'night';
@@ -198,9 +134,9 @@ async function advanceToNightAndMorning() {
       setLoading(true, '동네에 이상한 기운이 흐르고 있어요...');
       
       // 시나리오 고정 리포트 3개
-      const chaka = state.npcs.find(n => n.id === 'story_chaka');
-      const yami = state.npcs.find(n => n.id === 'story_yami');
-      const bamtol = state.npcs.find(n => n.id === 'story_bamtol');
+      const chaka = state.npcs.find(n => n.id === 'chaka');
+      const yami = state.npcs.find(n => n.id === 'yami');
+      const bamtol = state.npcs.find(n => n.id === 'bamtol');
       
       if (chaka) newReports.push({ day: nextDay, npcId: chaka.id, text: BOOKSTORE_STORY.chakaReport });
       if (yami) newReports.push({ day: nextDay, npcId: yami.id, text: BOOKSTORE_STORY.yamiReport });
@@ -231,10 +167,10 @@ async function advanceToNightAndMorning() {
       // 야미 꿈 진행도 약간 후퇴 (소문으로 인한 타격)
       if (yami) yami.dreamProgress = Math.max(0, yami.dreamProgress - 10);
       
-      // 일반 NPC 리포트도 소수 생성
-      const nonStoryNpcs = state.npcs.filter(n => !n.isStory);
+      // 일반 NPC 리포트도 소수 생성 (루루, 솜이 등 배경 NPC 대상)
+      const nonStoryNpcs = state.npcs.filter(n => !n.isMain);
       for (const npc of nonStoryNpcs.slice(0, 2)) {
-        const prompt = `${npc.species} ${npc.name}의 어젯밤 활동 한 줄 리포트. 직업:${npc.job}, 꿈:${npc.dream}. 25자 이내, "어젯밤"으로 시작, 호기심 훅 스타일. 답은 리포트 문장만.`;
+        const prompt = `${npc.name}의 어젯밤 활동 한 줄 리포트. 직업:${npc.job}, 꿈:${npc.dream}. 25자 이내, "어젯밤"으로 시작, 호기심 훅 스타일. 답은 리포트 문장만.`;
         try {
           const text = await callClaude('너는 동네 관찰자야.', prompt);
           newReports.push({ day: nextDay, npcId: npc.id, text });
@@ -247,8 +183,8 @@ async function advanceToNightAndMorning() {
     else if (isQuestTriggerDay) {
       setLoading(true, '야미에게 중요한 순간이 다가오고 있어요...');
       
-      const yami = state.npcs.find(n => n.id === 'story_yami');
-      const bamtol = state.npcs.find(n => n.id === 'story_bamtol');
+      const yami = state.npcs.find(n => n.id === 'yami');
+      const bamtol = state.npcs.find(n => n.id === 'bamtol');
       
       // 후속 리포트
       if (yami) newReports.push({ day: nextDay, npcId: yami.id, text: '야미가 밤새 서점 앞을 서성였다는 이야기가 돌아요.' });
@@ -339,7 +275,7 @@ async function advanceToNightAndMorning() {
         const targetRumors = newRumors.filter(r => r.aboutNpcId === npcId);
         const prompt = `${npc.name}의 꿈이 걸린 분기 퀘스트 상황을 만들어.
 
-NPC: ${npc.name} (${npc.species} ${npc.emoji})
+NPC: ${npc.name} (${npc.emoji})
 직업: ${npc.job}, 꿈: ${npc.dream}
 성격: ${npc.personality}, 호감도: ${npc.affinity}/100
 
@@ -490,6 +426,22 @@ JSON으로만 답해:
 }
 
 // =========================================================
+// NPC 카드/대화창용 헬퍼 — natural 이미지 우선, 없으면 이모지 폴백
+// =========================================================
+function getNpcAvatarHtml(npc, sizeClass) {
+  const naturalKey = `${npc.id}_natural`;
+  const img = (window.PRELOADED_ASSETS || {})[naturalKey];
+  if (img) {
+    // sizeClass에 따라 인라인 스타일 적용
+    const style = sizeClass === 'small'
+      ? 'width:36px; height:36px; object-fit:cover; border-radius:50%;'
+      : 'width:44px; height:44px; object-fit:cover; border-radius:50%;';
+    return `<img src="${img}" style="${style}" alt="${npc.name}" />`;
+  }
+  return npc.emoji || '👤';
+}
+
+// =========================================================
 // UI 렌더링
 // =========================================================
 function renderCounts() {
@@ -510,12 +462,13 @@ function renderCounts() {
 function renderNpcList() {
   const list = document.getElementById('npc-list');
   if (state.npcs.length === 0) {
-    list.innerHTML = '<div class="empty-state"><span class="big-emoji">🎁</span>가챠를 돌려<br>첫 주민을 만나봐요!</div>';
+    // 이제 5명 고정 등장 구조라 이 분기에 도달할 일은 거의 없음
+    list.innerHTML = '<div class="empty-state"><span class="big-emoji">🏘️</span>동네를 시작해보세요</div>';
     return;
   }
   list.innerHTML = state.npcs.map(n => `
     <div class="npc-card ${state.selectedNpcId == n.id ? 'selected' : ''} ${n.isStory ? 'story' : ''}" data-npc-id="${n.id}">
-      <div class="npc-emoji">${n.emoji}</div>
+      <div class="npc-emoji">${getNpcAvatarHtml(n, 'small')}</div>
       <div class="npc-info">
         <div class="npc-name">${n.name} <span class="stars">${'★'.repeat(n.level)}</span></div>
         <div class="npc-job">${n.job}</div>
@@ -534,7 +487,8 @@ function renderNpcList() {
         showNotification('💤 자는 동안은 상호작용할 수 없어요');
         return;
       }
-      const npcId = parseInt(el.dataset.npcId);
+      // id는 문자열(chaka 등) 또는 숫자일 수 있으므로 원본 그대로 사용
+      const npcId = el.dataset.npcId;
       // 인테리어에 있으면 근접 체크 없이 바로 대화
       if (state.viewMode === 'interior') {
         selectNpc(npcId);
@@ -584,7 +538,7 @@ function renderContent() {
     el.innerHTML = `
       <div style="padding-bottom:8px; border-bottom:1px solid #f0e4d4; margin-bottom:8px">
         <div style="display:flex; align-items:center; gap:8px">
-          <div style="font-size:24px">${npc.emoji}</div>
+          <div>${getNpcAvatarHtml(npc, 'medium')}</div>
           <div>
             <div style="font-weight:700; font-size:13px; color:#6b4423">${npc.name}</div>
             <div style="font-size:10px; color:#9c7a5a">${npc.job} · ${npc.personality}</div>
