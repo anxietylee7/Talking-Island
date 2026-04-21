@@ -23,11 +23,6 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-// 🎨 색상 정확도: Three.js editor와 동일한 렌더링 결과를 얻기 위함
-//    (GLTF 텍스처가 sRGB 공간인데 렌더러가 Linear로 해석하면 색이 어두워짐)
-renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
 container.appendChild(renderer.domElement);
 
 // 조명
@@ -370,15 +365,22 @@ function attachGltfToGroup(group, gltfScene, animations) {
           m.transparent = false;
           // 2) 양면 렌더링 (face가 뒤집혀 있어도 보이게)
           m.side = THREE.DoubleSide;
-          // 3) 🔧 PBR 머티리얼 밝기 보정
+          // 3) 🎨 PBR 머티리얼 밝기 보정 (전역 sRGB 설정 없이 개별 머티리얼 조정)
+          //    원본 모델이 Linear 공간 기준으로 어둡게 나오는 문제를 머티리얼 단에서 해결
           if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
             m.metalness = 0;
             m.roughness = Math.max(m.roughness ?? 0.5, 0.7);
+            // color를 sRGB→Linear 변환 근사치로 밝게 증폭 (감마 2.2 역변환)
+            if (m.color) {
+              m.color.r = Math.pow(m.color.r, 1 / 2.2);
+              m.color.g = Math.pow(m.color.g, 1 / 2.2);
+              m.color.b = Math.pow(m.color.b, 1 / 2.2);
+            }
+            // 텍스처가 있으면 sRGB로 명시 (r128에서 GLTF 자동 설정 누락 대응)
+            if (m.map) {
+              m.map.encoding = THREE.sRGBEncoding;
+            }
           }
-          // 4) 🎨 텍스처가 있으면 sRGB 인코딩으로 설정 (색상 정확도)
-          //    Three.js r128에서 GLTF 텍스처 자동 sRGB 설정이 누락되는 케이스 대응
-          if (m.map) m.map.encoding = THREE.sRGBEncoding;
-          if (m.emissiveMap) m.emissiveMap.encoding = THREE.sRGBEncoding;
           m.needsUpdate = true;
         });
       }
