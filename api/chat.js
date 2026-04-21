@@ -27,18 +27,29 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { system, user, max_tokens } = req.body || {};
+    const { system, user, messages: clientMessages, max_tokens } = req.body || {};
     
-    if (!user || typeof user !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid "user" field' });
-    }
-
-    // OpenAI Chat Completions 형식으로 변환
+    // 메시지 배열 구성
     const messages = [];
     if (system && typeof system === 'string') {
       messages.push({ role: 'system', content: system });
     }
-    messages.push({ role: 'user', content: user });
+    
+    // 클라이언트가 messages 배열을 보낸 경우 (새 방식 - 권장)
+    if (Array.isArray(clientMessages) && clientMessages.length > 0) {
+      for (const m of clientMessages) {
+        if (m && typeof m.role === 'string' && typeof m.content === 'string') {
+          // role은 'user' 또는 'assistant'만 허용
+          const role = m.role === 'assistant' ? 'assistant' : 'user';
+          messages.push({ role, content: m.content });
+        }
+      }
+    } else if (user && typeof user === 'string') {
+      // 구버전 호환 (user 단일 문자열)
+      messages.push({ role: 'user', content: user });
+    } else {
+      return res.status(400).json({ error: 'Missing messages or user field' });
+    }
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
