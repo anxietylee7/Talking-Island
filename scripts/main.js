@@ -36,7 +36,10 @@ window.__introRollGacha = async function() {
     await new Promise(r => setTimeout(r, delay));
     
     const npcTemplate = introDrawSequence[introDrawIndex];
-    const newNpc = { ...npcTemplate }; // 복사해서 추가
+    const newNpc = { 
+      ...npcTemplate, 
+      location: npcTemplate.homeLocation || 'outside',
+    };
     state.npcs.push(newNpc);
     introDrawIndex++;
     
@@ -151,22 +154,16 @@ function animate() {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
   
+  // updateNpcs는 씬 모드와 무관하게 npcMeshes 전체를 관리
+  // (각 NPC의 currentScene 속성에 따라 이동 방식이 달라짐)
+  updateNpcs(dt);
+  
   if (state.viewMode === 'interior') {
-    updateInteriorNpcs(dt);
     updateInteriorLighting();
-    // 외부 NPC·유저 말풍선 숨기기
-    Object.values(npcMeshes).forEach(n => {
-      n.speechBubbleEl.classList.add('hide');
-    });
+    // 유저 말풍선 숨기기 (유저는 외부에만 있음)
     if (state.user.bubbleEl) state.user.bubbleEl.classList.add('hide');
     renderer.render(interiorScene, camera);
   } else {
-    // 실내 말풍선 숨기기
-    Object.values(interiorNpcMeshes).forEach(n => {
-      n.speechBubbleEl.classList.add('hide');
-    });
-    updateNpcs(dt);
-    
     // 시뮬레이션 중에는 유저 아바타 숨김 + 시간은 runSimulationTick이 관리
     if (state.simulation.active) {
       if (state.user.mesh) state.user.mesh.visible = false;
