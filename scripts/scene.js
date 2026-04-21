@@ -323,7 +323,7 @@ function attachGltfToGroup(group, gltfScene, animations) {
   // 원본 클론 (같은 모델 여러 인스턴스 위해)
   const modelRoot = gltfScene.clone(true);
   
-  // 매트릭스 강제 업데이트 후 바운딩박스 계산
+  // 매트릭스 강제 업데이트 후 바운딩박스 계산 (T-pose 기준)
   modelRoot.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(modelRoot);
   const size = new THREE.Vector3();
@@ -333,12 +333,11 @@ function attachGltfToGroup(group, gltfScene, animations) {
   const scale = size.y > 0.01 ? TARGET_NPC_HEIGHT / size.y : 1;
   modelRoot.scale.setScalar(scale);
   
-  // 스케일 적용 후 다시 매트릭스 업데이트 + 박스 재계산
+  // 스케일 적용 후 다시 매트릭스 업데이트 + 박스 재계산 (T-pose 기준)
   modelRoot.updateMatrixWorld(true);
   const scaledBox = new THREE.Box3().setFromObject(modelRoot);
   
   // 바닥 정렬: 스케일 적용 후의 최하단이 y=0이 되도록
-  // scaledBox.min.y가 양수면 밑으로, 음수면 위로 끌어올림
   modelRoot.position.y = -scaledBox.min.y;
   
   console.log(`[gltf] model bbox after scale: min.y=${scaledBox.min.y.toFixed(2)} max.y=${scaledBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)}`);
@@ -366,6 +365,15 @@ function attachGltfToGroup(group, gltfScene, animations) {
     if (pickClip) {
       const action = mixer.clipAction(pickClip);
       action.play();
+      
+      // 🔧 애니메이션 한 프레임 적용 후 박스 재계산
+      // 스켈레탈 애니메이션이 적용되면 T-pose 박스와 완전히 다름.
+      // mixer.update(0.01)로 첫 프레임만 적용한 뒤 실제 변형된 박스 측정.
+      mixer.update(0.01);
+      modelRoot.updateMatrixWorld(true);
+      const animatedBox = new THREE.Box3().setFromObject(modelRoot);
+      modelRoot.position.y = -animatedBox.min.y;
+      console.log(`[gltf] animated bbox: min.y=${animatedBox.min.y.toFixed(2)} max.y=${animatedBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)} (clip: ${pickClip.name})`);
     }
   }
   return { modelRoot, mixer };
