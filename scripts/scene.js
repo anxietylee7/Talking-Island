@@ -308,8 +308,7 @@ const gltfCache = {}; // { 'chaka': {scene, animations} } 형태
 // 시나리오 NPC ID → 모델 파일명 매핑
 const NPC_MODEL_MAP = {
   'story_chaka': 'models/chaka.gltf',
-  // 야미만 Three.js 공식 샘플 모델로 테스트 — 유저 모델이 문제인지 제 코드가 문제인지 구별용
-  'story_yami': 'https://threejs.org/examples/models/gltf/Soldier.glb',
+  'story_yami': 'models/yami.gltf',
   'story_bamtol': 'models/bamtol.gltf',
   'story_luru': 'models/luru.gltf',
   'story_somi': 'models/somi.gltf',
@@ -321,8 +320,12 @@ const TARGET_NPC_HEIGHT = 2.0;
 
 // GLTF 씬을 NPC group에 붙이고 크기 자동 조정 + 애니메이션 믹서 반환
 function attachGltfToGroup(group, gltfScene, animations) {
-  // 원본 클론 (같은 모델 여러 인스턴스 위해)
-  const modelRoot = gltfScene.clone(true);
+  // ⚠️ Three.js r128에서 SkinnedMesh를 .clone()하면 스켈레톤 바인딩이 깨짐.
+  // SkeletonUtils.clone()을 써야 정상 clone됨.
+  const cloneFn = (THREE.SkeletonUtils && THREE.SkeletonUtils.clone)
+    ? THREE.SkeletonUtils.clone.bind(THREE.SkeletonUtils)
+    : (obj) => obj.clone(true);
+  const modelRoot = cloneFn(gltfScene);
   
   // 매트릭스 강제 업데이트 후 바운딩박스 계산 (T-pose 기준)
   modelRoot.updateMatrixWorld(true);
@@ -405,19 +408,13 @@ function attachGltfToGroup(group, gltfScene, animations) {
       action.play();
       
       // 🔧 애니메이션 한 프레임 적용 후 박스 재계산
-      // 스켈레탈 애니메이션이 적용되면 T-pose 박스와 완전히 다름.
-      // mixer.update(0.01)로 첫 프레임만 적용한 뒤 실제 변형된 박스 측정.
       mixer.update(0.01);
       modelRoot.updateMatrixWorld(true);
       const animatedBox = new THREE.Box3().setFromObject(modelRoot);
       
-      // ⚠️ 중요: 애니메이션이 스켈레톤 root bone을 움직여서 실제 렌더 위치가
-      // bbox와 다를 수 있음. 그래서 bbox 기준보다 추가로 위로 올림.
-      // animatedBox.min.y가 음수면 그만큼 위로, 양수면 양수만큼 아래로 — 이건 그대로 두고
-      // 추가로 모델 높이의 절반 정도 위로 (모델 root가 대체로 엉덩이=중간)
-      const halfHeight = TARGET_NPC_HEIGHT * 0.5;
-      modelRoot.position.y = -animatedBox.min.y + halfHeight;
-      console.log(`[gltf] animated bbox: min.y=${animatedBox.min.y.toFixed(2)} max.y=${animatedBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)} (clip: ${pickClip.name}, forced +${halfHeight})`);
+      // bbox 기준으로 발이 y=0에 오도록 정렬
+      modelRoot.position.y = -animatedBox.min.y;
+      console.log(`[gltf] animated bbox: min.y=${animatedBox.min.y.toFixed(2)} max.y=${animatedBox.max.y.toFixed(2)} → offset=${modelRoot.position.y.toFixed(2)} (clip: ${pickClip.name})`);
       
       // 🔧 디버그: 실제 그룹/모델의 월드 위치 확인
       setTimeout(() => {
