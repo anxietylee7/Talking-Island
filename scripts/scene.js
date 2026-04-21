@@ -951,7 +951,10 @@ function getFavoriteLocation(npc) {
 }
 
 function spawnNpcMesh(npc) {
-  const animal = ANIMALS.find(a => a.species === npc.species);
+  // 시나리오 NPC는 species 없음 → animal을 기본값으로 대체
+  const animal = ANIMALS.find(a => a.species === npc.species) || {
+    species: '사람', emoji: npc.emoji || '👤', color: npc.color || 0xffd9b3,
+  };
   const mesh = createNpcMesh(animal, npc.id);
   // 초기 스폰 위치는 자기 favorite 장소 근처에서 시작
   const fav = getFavoriteLocation(npc);
@@ -963,20 +966,20 @@ function spawnNpcMesh(npc) {
   mesh.userData.npcId = npc.id;
   
   // location에 따라 씬 결정
-  // 'outside'면 외부 scene에, 다른 값이면 아직 인테리어 진입 전이므로 일단 scene에 두되 보이지 않게
   const loc = npc.location || 'outside';
   if (loc === 'outside') {
     scene.add(mesh);
     mesh.visible = true;
   } else {
     scene.add(mesh);
-    mesh.visible = false; // 외부 씬에서는 안 보임
+    mesh.visible = false;
   }
   
-  // 이름 말풍선 DOM (항상 표시, 하지만 location이 현재 뷰와 맞을 때만)
+  // 이름 말풍선 DOM — 시나리오 NPC는 자기 emoji, 가챠 NPC는 animal emoji
+  const bubbleEmoji = npc.emoji || animal.emoji;
   const bubble = document.createElement('div');
   bubble.className = 'speech-bubble' + (npc.isStory ? ' story' : '');
-  bubble.textContent = `${animal.emoji} ${npc.name}`;
+  bubble.textContent = `${bubbleEmoji} ${npc.name}`;
   document.getElementById('app').appendChild(bubble);
   
   npcMeshes[npc.id] = {
