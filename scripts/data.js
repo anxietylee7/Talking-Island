@@ -1,21 +1,14 @@
 // =========================================================
 // 데이터 & 상수
 // =========================================================
-const ANIMALS = [
-  { species: '앵무새', emoji: '🦜', color: 0xffd580, trait: '수다쟁이', speechTraits: '말이 빠르고 들은 얘기를 꼭 옮긴다' },
-  { species: '부엉이', emoji: '🦉', color: 0xc9b892, trait: '관찰자', speechTraits: '차분하고 정확하다' },
-  { species: '거북이', emoji: '🐢', color: 0xa8dcc3, trait: '느긋함', speechTraits: '천천히 반응한다' },
-  { species: '고양이', emoji: '🐱', color: 0xf4c7a1, trait: '변덕', speechTraits: '도도하거나 애교 많다' },
-  { species: '토끼', emoji: '🐰', color: 0xfad4d8, trait: '활발', speechTraits: '들떠있고 감탄사 많다' },
-  { species: '너구리', emoji: '🦝', color: 0xa8a8a8, trait: '신중', speechTraits: '한 템포 쉬고 말한다' },
-  { species: '다람쥐', emoji: '🐿️', color: 0xd4a574, trait: '성실', speechTraits: '또박또박 말하고 감정이 얼굴에 드러난다' },
-];
 
 // 시나리오 고정 NPC 5명 (전체 시작 멤버)
+// id는 assets.js의 이미지 키와 매칭됨 (chaka → chaka_natural, chaka_happy ...)
 const STORY_NPCS = [
   {
-    id: 'story_chaka',
+    id: 'chaka',
     name: '차카', emoji: '📸',
+    color: 0xc9b892, // 따뜻한 베이지 (사진사 톤)
     trait: '신중', job: '동네 사진사', dream: '동네 사진집 출간',
     personality: '조용하고 관찰력이 좋으며, 말수가 적다',
     speechHabit: '~네요', secretSkill: '풍경 사진',
@@ -24,8 +17,9 @@ const STORY_NPCS = [
     homeLocation: 'photostudio',
   },
   {
-    id: 'story_yami',
+    id: 'yami',
     name: '야미', emoji: '📖',
+    color: 0xf4c7a1, // 부드러운 살구색 (학생 톤)
     trait: '변덕', job: '문학도 학생', dream: '독서 모임 만들기',
     personality: '조용하지만 좋아하는 책 얘기만 나오면 눈이 반짝거리는 책벌레',
     speechHabit: '~지', secretSkill: '시 낭송',
@@ -34,8 +28,9 @@ const STORY_NPCS = [
     homeLocation: 'outside',
   },
   {
-    id: 'story_bamtol',
+    id: 'bamtol',
     name: '밤톨', emoji: '📚',
+    color: 0xd4a574, // 짙은 호박색 (서점 주인 톤)
     trait: '성실', job: '서점 주인', dream: '',
     personality: '책을 사랑하고 원칙을 중시하며, 자기 서점에 대한 자부심이 크다',
     speechHabit: '~는군', secretSkill: '고서 감정',
@@ -44,8 +39,9 @@ const STORY_NPCS = [
     homeLocation: 'bookstore',
   },
   {
-    id: 'story_luru',
+    id: 'luru',
     name: '루루', emoji: '☕',
+    color: 0xfad4d8, // 핑크 (바리스타 톤)
     trait: '활발', job: '바리스타', dream: '시그니처 블렌드 만들기',
     personality: '밝고 에너지 넘치며, 모든 손님을 기억한다',
     speechHabit: '~었!', secretSkill: '라떼아트',
@@ -54,8 +50,9 @@ const STORY_NPCS = [
     homeLocation: 'cafe',
   },
   {
-    id: 'story_somi',
+    id: 'somi',
     name: '솜이', emoji: '🌸',
+    color: 0xffd580, // 따뜻한 노란색 (플로리스트 톤)
     trait: '수다쟁이', job: '플로리스트', dream: '계절 꽃 축제 열기',
     personality: '수다스럽고 감정이 풍부하며, 동네 소식을 가장 먼저 전한다',
     speechHabit: '~음~', secretSkill: '꽃말 사전',
