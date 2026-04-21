@@ -1,0 +1,10 @@
+{
+  "name": "npc-village-3d",
+  "version": "1.0.0",
+  "description": "AI 동물 주민 동네 시뮬레이션 게임",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {}
+}

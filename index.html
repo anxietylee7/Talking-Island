@@ -1,0 +1,4382 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body, html { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
+  #app { position: relative; width: 100vw; height: 100vh; background: #fef3e7; }
+  #canvas-container { position: absolute; inset: 0; }
+  canvas { display: block; }
+  
+  .panel {
+    position: absolute; background: rgba(255,255,255,0.92); backdrop-filter: blur(10px);
+    border-radius: 20px; padding: 14px; border: 2px solid #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    color: #6b4423; font-size: 13px;
+  }
+  
+  #top-bar { top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; }
+  #top-bar .title { font-weight: 700; font-size: 15px; color: #8b5a2b; display: flex; align-items: center; gap: 8px; }
+  #top-bar .stats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge-mint { background: #d4f1e4; color: #2d6a4f; }
+  .badge-peach { background: #ffd6cc; color: #c44536; }
+  .badge-cream { background: #fff0cc; color: #946c00; }
+  .badge-lavender { background: #e8dff5; color: #6b4c93; }
+  
+  #left-panel { top: 80px; left: 12px; width: 260px; max-height: calc(100vh - 100px); overflow-y: auto; }
+  #right-panel { top: 80px; right: 12px; width: 300px; max-height: calc(100vh - 100px); display: flex; flex-direction: column; }
+  
+  .section-title { font-weight: 700; font-size: 13px; color: #8b5a2b; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  
+  .npc-card {
+    background: #fff9f3; border-radius: 14px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer;
+    transition: all 0.2s; display: flex; align-items: center; gap: 8px; position: relative;
+  }
+  .npc-card:hover { transform: scale(1.02); background: #fde8ec; }
+  .npc-card.selected { background: #fde8ec; box-shadow: 0 0 0 2px #f4b6c1; }
+  .npc-card.story { background: linear-gradient(135deg, #fff0cc 0%, #fde8ec 100%); box-shadow: 0 0 0 1px #f4d484; }
+  .npc-card.story::after {
+    content: '★'; position: absolute; top: 6px; right: 8px;
+    font-size: 10px; color: #c44536;
+  }
+  .npc-emoji { font-size: 22px; }
+  .npc-info { flex: 1; min-width: 0; }
+  .npc-name { font-weight: 700; font-size: 12px; color: #6b4423; display: flex; align-items: center; gap: 4px; }
+  .npc-job { font-size: 10px; color: #9c7a5a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stars { color: #f9c74f; font-size: 10px; }
+  .progress-row { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+  .heart-indicator { font-size: 9px; color: #e63946; }
+  .dream-bar { flex: 1; height: 3px; background: #f0e4d4; border-radius: 2px; overflow: hidden; }
+  .dream-fill { height: 100%; background: #a8dcc3; transition: width 0.3s; }
+  
+  button.btn {
+    border: none; cursor: pointer; font-weight: 600; border-radius: 999px;
+    transition: all 0.2s; display: inline-flex; align-items: center; gap: 4px; justify-content: center;
+  }
+  button.btn:hover:not(:disabled) { transform: scale(1.03); }
+  button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-gacha { background: #ffd6cc; color: #c44536; padding: 6px 14px; font-size: 12px; }
+  .btn-night { background: linear-gradient(135deg, #7c94c7, #9d7cc7); color: white; padding: 10px 16px; font-size: 13px; width: 100%; margin-top: 8px; }
+  .btn-primary { background: linear-gradient(135deg, #ffa76b, #ff7a9c); color: white; padding: 8px 16px; font-size: 12px; }
+  .btn-tab { background: transparent; color: #8b5a2b; padding: 6px 10px; font-size: 11px; border-radius: 10px; }
+  .btn-tab.active { background: #fde8ec; color: #c44536; }
+  .btn-small { background: #fff9f3; color: #8b5a2b; padding: 4px 10px; font-size: 10px; }
+  
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 10px; background: #fff9f3; padding: 4px; border-radius: 12px; }
+  .tab-bar button { flex: 1; border: none; cursor: pointer; padding: 6px 4px; border-radius: 8px; font-size: 11px; font-weight: 600; background: transparent; color: #8b5a2b; position: relative; }
+  .tab-bar button.active { background: white; color: #c44536; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+  .tab-bar button .dot { position: absolute; top: 4px; right: 6px; width: 6px; height: 6px; background: #e63946; border-radius: 50%; }
+  
+  .content-area { flex: 1; overflow-y: auto; padding-right: 4px; }
+  
+  .chat-messages { max-height: 280px; overflow-y: auto; margin-bottom: 8px; padding: 4px; }
+  .chat-msg { padding: 8px 12px; border-radius: 14px; font-size: 12px; margin-bottom: 6px; max-width: 85%; line-height: 1.4; }
+  .chat-msg.user { background: #fde8ec; margin-left: auto; color: #6b4423; }
+  .chat-msg.npc { background: #fff9f3; color: #6b4423; }
+  .chat-input-row { display: flex; gap: 6px; }
+  .chat-input-row input { flex: 1; border: 2px solid #f0e4d4; background: #fff9f3; padding: 8px 12px; border-radius: 999px; font-size: 12px; outline: none; color: #6b4423; }
+  .chat-input-row input:focus { border-color: #f4b6c1; }
+  .send-btn { background: #fde8ec; color: #c44536; border: none; border-radius: 50%; width: 34px; height: 34px; cursor: pointer; font-size: 14px; }
+  
+  .report-item, .rumor-item, .quest-item { padding: 10px 12px; border-radius: 12px; margin-bottom: 6px; font-size: 12px; display: flex; gap: 8px; align-items: flex-start; line-height: 1.4; }
+  .report-item { background: #fff9f3; }
+  .rumor-item { background: #d4f1e4; color: #2d6a4f; }
+  .rumor-item.old { background: #f0f7f2; opacity: 0.75; }
+  .quest-item { background: #fff0cc; cursor: pointer; transition: transform 0.2s; flex-direction: column; gap: 4px; }
+  .quest-item:hover { transform: scale(1.01); }
+  .quest-item.resolved { background: #f0f0f0; }
+  
+  .quest-detail { background: #fff0cc; padding: 14px; border-radius: 14px; margin-bottom: 10px; font-size: 12px; line-height: 1.5; color: #6b4423; }
+  .quest-rumors { margin-top: 10px; padding-top: 10px; border-top: 1px solid #f4d484; font-size: 11px; color: #946c00; }
+  .quest-result { background: #d4f1e4; padding: 12px; border-radius: 14px; margin-top: 8px; font-size: 12px; color: #2d6a4f; line-height: 1.5; }
+  .quest-action { background: #e8f0ff; padding: 10px; border-radius: 12px; margin-top: 8px; font-size: 11px; color: #4a6fa5; font-style: italic; }
+  .quest-axes { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .axis-chip { background: rgba(255,255,255,0.7); padding: 3px 8px; border-radius: 999px; font-size: 10px; color: #2d6a4f; }
+  .quest-input { width: 100%; border: 2px solid #f0e4d4; background: #fff9f3; padding: 10px; border-radius: 12px; font-size: 12px; resize: none; min-height: 70px; color: #6b4423; font-family: inherit; outline: none; }
+  .quest-input:focus { border-color: #f4b6c1; }
+  
+  .empty-state { text-align: center; padding: 40px 20px; color: #9c7a5a; font-size: 12px; }
+  .empty-state .big-emoji { font-size: 36px; margin-bottom: 8px; display: block; }
+  
+  #notification {
+    position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+    background: white; padding: 10px 20px; border-radius: 999px;
+    border: 2px solid #f4b6c1; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    font-size: 12px; font-weight: 600; color: #6b4423; z-index: 100;
+    opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+  }
+  #notification.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  
+  #loading-overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.2); backdrop-filter: blur(4px);
+    display: none; align-items: center; justify-content: center; z-index: 200;
+  }
+  #loading-overlay.show { display: flex; }
+  .loading-box { background: white; padding: 18px 24px; border-radius: 20px; border: 2px solid #f4b6c1; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #6b4423; font-weight: 600; }
+  .spinner { width: 18px; height: 18px; border: 3px solid #f0e4d4; border-top-color: #f4b6c1; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  .speech-bubble {
+    position: absolute; background: white; padding: 3px 10px; border-radius: 14px;
+    font-size: 11px; color: #6b4423; pointer-events: none; transform: translate(-50%, -100%);
+    border: 1.5px solid #f4b6c1; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    opacity: 0.95; transition: opacity 0.2s; font-weight: 600;
+    z-index: 40;
+  }
+  .speech-bubble.hide { opacity: 0 !important; }
+  .speech-bubble.story { border-color: #f4d484; background: linear-gradient(135deg, #fff9f0 0%, #fff0cc 100%); }
+  .speech-bubble.chatting { background: linear-gradient(135deg, #fef3e7 0%, #fde8ec 100%); border-color: #f4b6c1; }
+  .speech-bubble::after {
+    content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid white;
+  }
+  
+  #hint {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,255,255,0.85); padding: 6px 14px; border-radius: 999px;
+    font-size: 11px; color: #8b5a2b;
+  }
+  
+  #exit-interior {
+    position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+    background: white; border: 2px solid #f4b6c1; padding: 8px 18px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; color: #c44536; cursor: pointer; z-index: 50;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; align-items: center; gap: 6px;
+  }
+  #exit-interior:hover { transform: translateX(-50%) scale(1.05); }
+  #exit-interior.show { display: flex; }
+  
+  #interior-title {
+    position: absolute; top: 130px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,255,255,0.9); padding: 6px 16px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; color: #8b5a2b; z-index: 50;
+    display: none; gap: 6px; align-items: center;
+  }
+  #interior-title.show { display: flex; }
+  
+  #time-control { display: flex; gap: 6px; align-items: center; }
+  #time-bar { width: 100px; height: 4px; background: #f0e4d4; border-radius: 2px; overflow: hidden; }
+  #time-bar-fill { height: 100%; background: linear-gradient(90deg, #f9c74f, #f4b6c1, #7c94c7); transition: width 0.5s; }
+
+  /* === 인트로 화면 === */
+  #intro-screen {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;
+    background: linear-gradient(135deg, #fef3e7 0%, #ffe4d4 40%, #fde8ec 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; transition: opacity 0.8s;
+  }
+  #intro-screen.fade-out { opacity: 0; pointer-events: none; }
+  
+  .intro-logo { font-size: 72px; margin-bottom: 8px; animation: float 3s ease-in-out infinite; }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  
+  .intro-title {
+    font-size: 28px; font-weight: 800; color: #8b5a2b; margin-bottom: 6px; text-align: center;
+  }
+  .intro-subtitle {
+    font-size: 13px; color: #9c7a5a; margin-bottom: 36px; text-align: center; line-height: 1.5;
+  }
+  
+  .gacha-box {
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(10px);
+    border: 3px solid #fff; border-radius: 32px; padding: 32px 28px;
+    box-shadow: 0 12px 40px rgba(196, 69, 54, 0.12);
+    text-align: center; max-width: 380px; width: 100%;
+  }
+  
+  .gacha-capsule {
+    width: 160px; height: 160px; margin: 0 auto 20px; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px; border-radius: 50%;
+    background: linear-gradient(135deg, #ffd6cc 0%, #fde8ec 100%);
+    box-shadow: inset 0 -8px 20px rgba(196, 69, 54, 0.1), 0 8px 24px rgba(196, 69, 54, 0.15);
+    transition: transform 0.4s;
+  }
+  .gacha-capsule.rolling { animation: roll 0.8s ease-in-out infinite; }
+  .gacha-capsule.popped { animation: pop 0.6s ease-out; }
+  @keyframes roll {
+    0%, 100% { transform: rotate(-8deg) scale(1); }
+    50% { transform: rotate(8deg) scale(1.05); }
+  }
+  @keyframes pop {
+    0% { transform: scale(0.5); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  .gacha-sparkle {
+    position: absolute; font-size: 24px; opacity: 0;
+    animation: sparkle 0.8s ease-out forwards;
+  }
+  @keyframes sparkle {
+    0% { opacity: 0; transform: scale(0) translate(0, 0); }
+    50% { opacity: 1; }
+    100% { opacity: 0; transform: scale(1.5) translate(var(--dx), var(--dy)); }
+  }
+  
+  #intro-gacha-btn {
+    background: linear-gradient(135deg, #ffa76b 0%, #ff7a9c 100%);
+    color: white; border: none; padding: 14px 36px; border-radius: 999px;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(255, 122, 156, 0.4);
+    transition: all 0.2s;
+  }
+  #intro-gacha-btn:hover:not(:disabled) { transform: scale(1.05); box-shadow: 0 6px 20px rgba(255, 122, 156, 0.5); }
+  #intro-gacha-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  
+  .gacha-result {
+    display: none; padding: 16px 12px 0; animation: fadeInUp 0.5s ease-out;
+  }
+  .gacha-result.show { display: block; }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .result-name {
+    font-size: 22px; font-weight: 800; color: #8b5a2b; margin-bottom: 4px;
+  }
+  .result-species {
+    font-size: 12px; color: #c44536; font-weight: 600; margin-bottom: 14px;
+  }
+  .result-detail {
+    display: grid; grid-template-columns: auto 1fr; gap: 8px 14px;
+    font-size: 12px; color: #6b4423; text-align: left;
+    background: #fff9f3; padding: 14px; border-radius: 16px; margin-bottom: 18px;
+  }
+  .result-detail .label { color: #9c7a5a; font-weight: 600; }
+  .result-detail .value { color: #6b4423; }
+  
+  #enter-village-btn {
+    background: linear-gradient(135deg, #7c94c7 0%, #9d7cc7 100%);
+    color: white; border: none; padding: 12px 32px; border-radius: 999px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(124, 148, 199, 0.4);
+    transition: all 0.2s;
+  }
+  #enter-village-btn:hover { transform: scale(1.05); }
+  
+  .intro-loading {
+    display: none; align-items: center; justify-content: center; gap: 8px;
+    font-size: 13px; color: #9c7a5a; margin-top: 14px;
+  }
+  .intro-loading.show { display: flex; }
+  
+  /* === 스토리 모달 === */
+  #story-modal {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.4); backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  #story-modal.show { display: flex; animation: fadeIn 0.4s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .story-modal-inner {
+    background: white; border-radius: 24px; padding: 28px 24px;
+    max-width: 420px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    border: 3px solid #fde8ec; animation: popUp 0.4s ease-out;
+  }
+  @keyframes popUp {
+    from { transform: scale(0.9) translateY(10px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  .story-modal-title {
+    font-size: 18px; font-weight: 800; color: #8b5a2b; margin-bottom: 12px;
+  }
+  .story-modal-body {
+    font-size: 13px; color: #6b4423; line-height: 1.7; white-space: pre-wrap;
+    margin-bottom: 20px;
+  }
+  .story-modal-close {
+    background: linear-gradient(135deg, #ffa76b 0%, #ff7a9c 100%);
+    color: white; border: none; padding: 10px 28px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; cursor: pointer; width: 100%;
+    transition: all 0.2s;
+  }
+  .story-modal-close:hover { transform: scale(1.03); }
+  
+  /* === 제타 스타일 팝업 채팅창 === */
+  #zeta-chat {
+    position: fixed; inset: 0; z-index: 450;
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(12px);
+    display: none; align-items: center; justify-content: center;
+    padding: 40px 20px;
+    animation: fadeIn 0.3s;
+  }
+  #zeta-chat.show { display: flex; }
+  .zeta-inner {
+    width: 100%; max-width: 480px; max-height: 85vh; height: 100%;
+    background: #fef3e7; border-radius: 24px; overflow: hidden;
+    display: flex; flex-direction: column; position: relative;
+    animation: zetaSlide 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  }
+  @keyframes zetaSlide {
+    from { transform: translateY(30px) scale(0.95); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .zeta-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; background: rgba(255,255,255,0.75);
+    backdrop-filter: blur(8px); border-bottom: 1px solid rgba(200, 170, 130, 0.2);
+    z-index: 2;
+  }
+  .zeta-back {
+    background: none; border: none; color: #8b5a2b; font-size: 22px;
+    cursor: pointer; padding: 4px 8px; border-radius: 50%;
+    transition: background 0.15s;
+  }
+  .zeta-back:hover { background: rgba(139, 90, 43, 0.1); }
+  .zeta-header-info { flex: 1; }
+  .zeta-header-name { font-weight: 800; color: #6b4423; font-size: 15px; }
+  .zeta-header-sub { font-size: 11px; color: #9c7a5a; }
+  .zeta-heart {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 12px; color: #e63946; font-weight: 700;
+  }
+  
+  .zeta-portrait-area {
+    position: relative; height: 200px; flex-shrink: 0;
+    overflow: hidden; background: #000;
+  }
+  .zeta-portrait {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0; transition: opacity 0.5s;
+  }
+  .zeta-portrait.show { opacity: 1; }
+  .zeta-portrait-gradient {
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom, transparent 40%, rgba(254,243,231,0.2) 70%, #fef3e7 100%);
+    pointer-events: none;
+  }
+  
+  .zeta-chat-area {
+    flex: 1; display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .zeta-messages {
+    flex: 1; overflow-y: auto; padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .zeta-msg {
+    max-width: 85%; padding: 10px 14px; border-radius: 18px;
+    font-size: 13px; line-height: 1.5; color: #6b4423;
+    animation: msgPop 0.3s ease-out;
+  }
+  @keyframes msgPop {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .zeta-msg.npc {
+    background: white; align-self: flex-start;
+    border: 1px solid rgba(200, 170, 130, 0.2);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .zeta-msg.user {
+    background: linear-gradient(135deg, #ffd6cc 0%, #fde8ec 100%);
+    align-self: flex-end; color: #6b4423;
+  }
+  .zeta-msg.system {
+    background: rgba(139, 90, 43, 0.08); color: #9c7a5a;
+    font-size: 11px; align-self: center; font-style: italic;
+    padding: 6px 12px;
+  }
+  .zeta-typing {
+    background: white; padding: 10px 14px; border-radius: 18px;
+    align-self: flex-start; display: inline-flex; gap: 4px;
+  }
+  .zeta-typing span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #c9a57a; animation: typingDot 1.2s infinite;
+  }
+  .zeta-typing span:nth-child(2) { animation-delay: 0.2s; }
+  .zeta-typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingDot {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+  
+  .zeta-input-row {
+    display: flex; gap: 8px; padding: 12px 14px;
+    background: rgba(255,255,255,0.75); backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(200, 170, 130, 0.2);
+  }
+  .zeta-input {
+    flex: 1; border: 2px solid #f0e4d4; background: white;
+    padding: 10px 16px; border-radius: 999px; font-size: 13px;
+    outline: none; color: #6b4423;
+  }
+  .zeta-input:focus { border-color: #f4b6c1; }
+  .zeta-send {
+    background: linear-gradient(135deg, #ffa76b 0%, #ff7a9c 100%);
+    color: white; border: none; width: 40px; height: 40px;
+    border-radius: 50%; cursor: pointer; font-size: 15px;
+    transition: transform 0.15s;
+  }
+  .zeta-send:hover:not(:disabled) { transform: scale(1.08); }
+  .zeta-send:disabled { opacity: 0.5; cursor: not-allowed; }
+  
+  /* === 증거 사진 팝업 === */
+  #evidence-modal {
+    position: fixed; inset: 0; z-index: 700;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(10px);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+    cursor: pointer;
+  }
+  #evidence-modal.show { display: flex; animation: fadeIn 0.3s; }
+  .evidence-inner {
+    max-width: 440px; width: 100%; text-align: center;
+    animation: evidencePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes evidencePop {
+    0% { transform: scale(0.3) rotate(-15deg); opacity: 0; }
+    60% { transform: scale(1.05) rotate(3deg); opacity: 1; }
+    100% { transform: scale(1) rotate(-1deg); opacity: 1; }
+  }
+  .evidence-img-wrap {
+    background: white; padding: 10px 10px 14px 10px;
+    border-radius: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    transform: rotate(-1.5deg);
+  }
+  .evidence-img-wrap img {
+    width: 100%; height: auto; display: block; border-radius: 2px;
+  }
+  .evidence-context {
+    color: white; margin-top: 20px; font-size: 15px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5); font-weight: 700;
+    line-height: 1.6;
+  }
+  .evidence-hint {
+    color: rgba(255,255,255,0.7); font-size: 11px; margin-top: 10px;
+  }
+  
+  /* === 소문 UI 강화 === */
+  .rumor-board {
+    background: linear-gradient(135deg, #e8d8c0 0%, #d4c0a5 100%);
+    padding: 10px; border-radius: 14px; position: relative;
+    background-image: 
+      repeating-linear-gradient(90deg, rgba(139,90,43,0.05) 0px, rgba(139,90,43,0.05) 2px, transparent 2px, transparent 20px),
+      repeating-linear-gradient(0deg, rgba(139,90,43,0.05) 0px, rgba(139,90,43,0.05) 2px, transparent 2px, transparent 20px);
+  }
+  .rumor-board-title {
+    text-align: center; font-weight: 800; color: #6b4423;
+    margin-bottom: 10px; padding: 6px; background: rgba(255,255,255,0.6);
+    border-radius: 8px; font-size: 12px;
+  }
+  .rumor-note {
+    background: #fff9f0; padding: 10px 12px; margin: 6px;
+    border-radius: 2px; font-size: 12px; color: #6b4423;
+    position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transform: rotate(-0.5deg); line-height: 1.4;
+  }
+  .rumor-note:nth-child(even) { transform: rotate(0.8deg); background: #ffeede; }
+  .rumor-note:nth-child(3n) { transform: rotate(-1deg); background: #f0ebdd; }
+  .rumor-note.story { background: #fff0cc; border-left: 3px solid #c44536; }
+  .rumor-note::before {
+    content: '📌'; position: absolute; top: -4px; left: 50%;
+    transform: translateX(-50%); font-size: 14px;
+  }
+  .rumor-note .rumor-meta {
+    font-size: 10px; color: #9c7a5a; margin-top: 4px; display: flex;
+    justify-content: space-between; align-items: center;
+  }
+  .rumor-note.new-tag::after {
+    content: 'NEW'; background: #c44536; color: white;
+    padding: 1px 6px; border-radius: 999px; font-size: 9px;
+    font-weight: 700;
+  }
+  
+  /* === 증거 보관함 === */
+  .evidence-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+  }
+  .evidence-slot {
+    background: #fff9f3; padding: 8px; border-radius: 10px;
+    cursor: pointer; transition: transform 0.2s;
+    border: 2px solid #f0e4d4; position: relative;
+  }
+  .evidence-slot.collected {
+    background: linear-gradient(135deg, #fff9f0 0%, #fde8ec 100%);
+    border-color: #f4b6c1;
+  }
+  .evidence-slot:hover { transform: scale(1.03); }
+  .evidence-slot.locked { opacity: 0.5; cursor: not-allowed; }
+  .evidence-slot-thumb {
+    width: 100%; aspect-ratio: 1; border-radius: 6px;
+    background: #f0e4d4; margin-bottom: 6px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+  }
+  .evidence-slot-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .evidence-slot-name {
+    font-size: 11px; font-weight: 700; color: #6b4423; text-align: center;
+  }
+  
+  /* === 이미지 업로드 모달 === */
+  #asset-modal {
+    position: fixed; inset: 0; z-index: 800;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  #asset-modal.show { display: flex; }
+  .asset-inner {
+    background: white; border-radius: 20px; padding: 20px;
+    max-width: 600px; width: 100%; max-height: 85vh; overflow-y: auto;
+  }
+  .asset-title {
+    font-size: 15px; font-weight: 800; color: #8b5a2b;
+    margin-bottom: 6px;
+  }
+  .asset-desc {
+    font-size: 12px; color: #9c7a5a; margin-bottom: 14px; line-height: 1.5;
+  }
+  .asset-dropzone {
+    border: 2px dashed #f4b6c1; border-radius: 14px;
+    padding: 20px; text-align: center; background: #fef3e7;
+    font-size: 12px; color: #8b5a2b; cursor: pointer;
+    transition: background 0.2s; margin-bottom: 14px;
+  }
+  .asset-dropzone:hover, .asset-dropzone.drag { background: #fde8ec; }
+  .asset-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+  }
+  .asset-slot {
+    background: #fff9f3; padding: 6px; border-radius: 10px;
+    text-align: center; font-size: 10px; color: #8b5a2b;
+  }
+  .asset-slot .thumb {
+    width: 100%; aspect-ratio: 1; background: #f0e4d4;
+    border-radius: 6px; margin-bottom: 4px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .asset-slot .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .asset-slot.has { background: #d4f1e4; }
+  .asset-close {
+    background: linear-gradient(135deg, #ffa76b 0%, #ff7a9c 100%);
+    color: white; border: none; padding: 10px 20px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; cursor: pointer; width: 100%;
+    margin-top: 14px;
+  }
+  
+  /* 좌측 상단 에셋 버튼 */
+  #asset-btn {
+    position: absolute; top: 14px; right: 14px; z-index: 50;
+    background: white; border: 2px solid #f4b6c1; padding: 6px 12px;
+    border-radius: 999px; font-size: 11px; font-weight: 700; color: #c44536;
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  #asset-btn:hover { transform: scale(1.03); }
+</style>
+
+<div id="app"></div>
+<div id="canvas-container"></div>
+
+<div id="intro-screen">
+  <div class="intro-logo">🏘️</div>
+  <div class="intro-title">AI 동물 주민 동네</div>
+  <div class="intro-subtitle">첫 주민을 뽑고 함께 살아갈 동네를 시작해보세요</div>
+  
+  <div class="gacha-box">
+    <div class="gacha-capsule" id="gacha-capsule">🎁</div>
+    <div id="gacha-progress" style="font-size:12px; color:#9c7a5a; margin-bottom:10px">주민 <b id="gacha-count">0</b> / 5명 뽑기</div>
+    <button id="intro-gacha-btn" onclick="window.__introRollGacha && window.__introRollGacha()">🎲 주민 뽑기</button>
+    <div class="intro-loading" id="intro-loading">
+      <div class="spinner"></div>
+      <span>새 주민을 부르는 중...</span>
+    </div>
+    
+    <div class="gacha-result" id="gacha-result">
+      <div class="result-name" id="result-name"></div>
+      <div class="result-species" id="result-species"></div>
+      <div class="result-detail">
+        <div class="label">직업</div><div class="value" id="result-job"></div>
+        <div class="label">꿈</div><div class="value" id="result-dream"></div>
+        <div class="label">성격</div><div class="value" id="result-personality"></div>
+        <div class="label">말버릇</div><div class="value" id="result-speech"></div>
+      </div>
+      <div id="gacha-result-actions"></div>
+    </div>
+  </div>
+</div>
+
+<div id="top-bar" class="panel">
+  <div class="title">🏘️ AI 동물 주민 동네</div>
+  <div class="stats">
+    <div class="badge badge-mint" id="day-badge">Day 1 · ☀️ 아침</div>
+    <div id="time-bar"><div id="time-bar-fill" style="width: 20%"></div></div>
+    <div class="badge badge-mint" id="npc-count">주민 0명</div>
+    <div class="badge badge-peach" id="quest-count" style="display:none">사건 0건</div>
+  </div>
+</div>
+
+<div id="left-panel" class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+    <div class="section-title">🐾 주민들</div>
+    <button class="btn btn-gacha" id="gacha-btn">🎁 가챠</button>
+  </div>
+  <div id="npc-list"></div>
+  <button class="btn btn-night" id="night-btn">🌙 밤으로 → 다음 날</button>
+</div>
+
+<div id="right-panel" class="panel">
+  <div class="tab-bar">
+    <button data-tab="chat" class="active">💬 대화</button>
+    <button data-tab="report">📜 리포트</button>
+    <button data-tab="board">📢 소문</button>
+    <button data-tab="quest">📖 사건<span class="dot" id="quest-dot" style="display:none"></span></button>
+  </div>
+  <div class="content-area" id="tab-content"></div>
+</div>
+
+<div id="notification"></div>
+
+<button id="asset-btn" onclick="window.__openAssets && window.__openAssets()">🖼️ 이미지</button>
+
+<div id="story-modal">
+  <div class="story-modal-inner">
+    <div class="story-modal-title" id="story-modal-title"></div>
+    <div class="story-modal-body" id="story-modal-body"></div>
+    <button class="story-modal-close" onclick="window.__closeStoryModal && window.__closeStoryModal()">확인</button>
+  </div>
+</div>
+
+<!-- 제타 스타일 채팅 -->
+<div id="zeta-chat">
+  <div class="zeta-inner">
+    <div class="zeta-header">
+      <button class="zeta-back" onclick="window.__closeZeta && window.__closeZeta()">←</button>
+      <div class="zeta-header-info">
+        <div class="zeta-header-name" id="zeta-name"></div>
+        <div class="zeta-header-sub" id="zeta-sub"></div>
+      </div>
+      <div class="zeta-heart">♥ <span id="zeta-affinity"></span></div>
+    </div>
+    <div class="zeta-portrait-area" id="zeta-portrait-area">
+      <img class="zeta-portrait" id="zeta-portrait" />
+      <div class="zeta-portrait-gradient"></div>
+    </div>
+    <div class="zeta-chat-area">
+      <div class="zeta-messages" id="zeta-messages"></div>
+      <div class="zeta-input-row">
+        <input type="text" class="zeta-input" id="zeta-input" placeholder="메시지를 입력하세요..." />
+        <button class="zeta-send" id="zeta-send" onclick="window.__zetaSend && window.__zetaSend()">➤</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 증거 팝업 -->
+<div id="evidence-modal" onclick="window.__closeEvidence && window.__closeEvidence()">
+  <div class="evidence-inner" onclick="event.stopPropagation()">
+    <div class="evidence-img-wrap">
+      <img id="evidence-img" />
+    </div>
+    <div class="evidence-context" id="evidence-context"></div>
+    <div class="evidence-hint">클릭하여 닫기</div>
+  </div>
+</div>
+
+<!-- 이미지 업로드 모달 -->
+<div id="asset-modal">
+  <div class="asset-inner">
+    <div class="asset-title">🖼️ 이미지 에셋 관리</div>
+    <div class="asset-desc">
+      Gemini로 생성한 NPC 표정 및 증거 사진을 업로드하세요. 파일명을 보고 자동으로 해당 슬롯에 들어갑니다.<br>
+      <b>여러 파일을 한번에 드래그</b>해도 됩니다.
+    </div>
+    <div class="asset-dropzone" id="asset-dropzone">
+      📁 여기에 이미지 파일을 드롭하거나 클릭해서 선택하세요<br>
+      <span style="font-size:10px; color:#9c7a5a">예: chaka_natural.png, yami_sad.png, bamtol_ledger.png...</span>
+    </div>
+    <input type="file" id="asset-file" multiple accept="image/*" style="display:none" />
+    <div style="font-size:12px; font-weight:700; color:#8b5a2b; margin-bottom:6px">NPC 표정 (15장)</div>
+    <div class="asset-grid" id="asset-grid-npc"></div>
+    <div style="font-size:12px; font-weight:700; color:#8b5a2b; margin:14px 0 6px">증거/연출 사진 (6장)</div>
+    <div class="asset-grid" id="asset-grid-evidence"></div>
+    <button class="asset-close" onclick="window.__closeAssets && window.__closeAssets()">닫기</button>
+  </div>
+</div>
+
+<div id="loading-overlay">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div id="loading-msg">불러오는 중...</div>
+  </div>
+</div>
+
+<div id="hint">🖱️ 바닥 클릭: 이동 · NPC 클릭: 다가가서 대화 · 드래그: 카메라 · 휠: 줌</div>
+
+<button id="exit-interior">← 동네로 나가기</button>
+<div id="interior-title"><span id="interior-emoji">🍞</span><span id="interior-name">빵집</span></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="assets.js"></script>
+<script>
+// =========================================================
+// 데이터 & 상수
+// =========================================================
+const ANIMALS = [
+  { species: '앵무새', emoji: '🦜', color: 0xffd580, trait: '수다쟁이', speechTraits: '말이 빠르고 들은 얘기를 꼭 옮긴다' },
+  { species: '부엉이', emoji: '🦉', color: 0xc9b892, trait: '관찰자', speechTraits: '차분하고 정확하다' },
+  { species: '거북이', emoji: '🐢', color: 0xa8dcc3, trait: '느긋함', speechTraits: '천천히 반응한다' },
+  { species: '고양이', emoji: '🐱', color: 0xf4c7a1, trait: '변덕', speechTraits: '도도하거나 애교 많다' },
+  { species: '토끼', emoji: '🐰', color: 0xfad4d8, trait: '활발', speechTraits: '들떠있고 감탄사 많다' },
+  { species: '너구리', emoji: '🦝', color: 0xa8a8a8, trait: '신중', speechTraits: '한 템포 쉬고 말한다' },
+  { species: '다람쥐', emoji: '🐿️', color: 0xd4a574, trait: '성실', speechTraits: '또박또박 말하고 감정이 얼굴에 드러난다' },
+];
+
+// 시나리오 고정 NPC 5명 (전체 시작 멤버)
+const STORY_NPCS = [
+  {
+    id: 'story_chaka',
+    name: '차카', species: '너구리', emoji: '🦝', color: 0xa8a8a8,
+    trait: '신중', job: '동네 사진사', dream: '동네 사진집 출간',
+    personality: '조용하고 관찰력이 좋으며, 말수가 적다',
+    speechHabit: '~인 것 같아요', secretSkill: '풍경 사진',
+    level: 2, affinity: 40, dreamProgress: 45,
+    isStory: true, isMain: true,
+  },
+  {
+    id: 'story_yami',
+    name: '야미', species: '고양이', emoji: '🐱', color: 0xf4c7a1,
+    trait: '변덕', job: '문학도 학생', dream: '독서 모임 만들기',
+    personality: '조용하지만 좋아하는 책 얘기만 나오면 눈이 반짝거리는 책벌레',
+    speechHabit: '~다냥', secretSkill: '시 낭송',
+    level: 3, affinity: 45, dreamProgress: 60,
+    isStory: true, isMain: true,
+  },
+  {
+    id: 'story_bamtol',
+    name: '밤톨', species: '다람쥐', emoji: '🐿️', color: 0xd4a574,
+    trait: '성실', job: '서점 주인', dream: '',
+    personality: '책을 사랑하고 원칙을 중시하며, 자기 서점에 대한 자부심이 크다',
+    speechHabit: '~쿵', secretSkill: '고서 감정',
+    level: 2, affinity: 35, dreamProgress: 0,
+    isStory: true, isMain: true,
+  },
+  {
+    id: 'story_luru',
+    name: '루루', species: '토끼', emoji: '🐰', color: 0xfad4d8,
+    trait: '활발', job: '바리스타', dream: '시그니처 블렌드 만들기',
+    personality: '밝고 에너지 넘치며, 모든 손님을 기억한다',
+    speechHabit: '~뿅', secretSkill: '라떼아트',
+    level: 1, affinity: 35, dreamProgress: 20,
+    isStory: true,
+  },
+  {
+    id: 'story_somi',
+    name: '솜이', species: '앵무새', emoji: '🦜', color: 0xffd580,
+    trait: '수다쟁이', job: '플로리스트', dream: '계절 꽃 축제 열기',
+    personality: '수다스럽고 감정이 풍부하며, 동네 소식을 가장 먼저 전한다',
+    speechHabit: '~뿌', secretSkill: '꽃말 사전',
+    level: 1, affinity: 35, dreamProgress: 15,
+    isStory: true,
+  },
+];
+
+// 시나리오 스토리 데이터
+const BOOKSTORE_STORY = {
+  summary: '야미가 밤톨 서점에 예약한 책을 밤에 뒷문으로 픽업했는데, 같은 시각 차카가 야경 사진을 찍다가 우연히 그 장면이 찍혔다. 밤톨이 사진을 보고 "야미가 책을 훔친 것"이라 오해한다.',
+  day1Hint: '동네 광장에 차카·야미·밤톨 세 주민이 이사왔어요. 편하게 인사해보세요.',
+  day2Opening: {
+    title: '🌅 이상한 소문이 돌기 시작했어요',
+    body: '오늘 아침 동네 게시판에 "야미가 밤톨 서점에서 책을 훔쳤다"는 글이 올라왔어요. 차카가 찍은 야경 사진 한 장이 화근이었대요.\n\n밤톨은 장부도 확인하지 않고 감정이 앞섰고, 야미는 곧 열 첫 독서 모임 장소로 밤톨 서점을 빌리기로 했었는데…'
+  },
+  rumorText: '야미가 밤에 밤톨 서점에서 책을 훔쳤다는 소문이 있다냥',
+  rumorTextMild: '야미가 밤톨 서점에서 책을 몰래 가져갔다더라쿵',
+  chakaReport: '어젯밤 차카가 사진관 쇼윈도에 야경 사진을 걸어뒀어요.',
+  yamiReport: '어젯밤 야미가 뒷길에서 가방을 들고 나왔어요.',
+  bamtolReport: '밤톨이 아침부터 사진관 앞에서 얼굴이 굳은 채 서 있었어요.',
+};
+
+const LOCATIONS = [
+  { name: '광장', x: 0, z: 0, color: 0xfff0cc, emoji: '⛲' },
+  { name: '사진관', x: -8, z: -6, color: 0xffd6cc, emoji: '📸', interior: 'photostudio' },
+  { name: '카페', x: 7, z: -5, color: 0xd4a5f5, emoji: '☕', interior: 'cafe' },
+  { name: '꽃가게', x: -7, z: 7, color: 0xfad4d8, emoji: '🌸', interior: 'flower' },
+  { name: '서점', x: 8, z: 6, color: 0xc9dcf5, emoji: '📚', interior: 'bookstore' },
+  { name: '연못', x: 0, z: 9, color: 0xa8d0dc, emoji: '🪷' },
+  { name: '우리집', x: 0, z: -11, color: 0xfff5e1, emoji: '🏠', interior: 'home', userOnly: true },
+];
+
+// =========================================================
+// 상태 관리
+// =========================================================
+const state = {
+  npcs: [],
+  day: 1,
+  timeOfDay: 0.32,
+  phase: 'morning',
+  selectedNpcId: null,
+  chatHistory: {},
+  rumors: [],
+  reports: [],
+  quests: [],
+  activeTab: 'chat',
+  activeQuestId: null,
+  loading: false,
+  viewMode: 'village',
+  currentInterior: null,
+  // 시나리오 진행 상태
+  storyStage: 'day1', // day1 -> day2_triggered -> quest_active -> resolved
+  storyOpeningShown: false,
+  // 유저 아바타 상태
+  user: {
+    mesh: null,           // THREE.Group (createUserMesh 결과)
+    position: { x: 0, z: 0 },
+    targetPos: null,      // { x, z } or null
+    moving: false,
+    speed: 3.5,           // NPC(2.0)보다 살짝 빠름
+    bounce: 0,            // 걷기 애니메이션용
+    pendingNpcId: null,   // 이 NPC에게 가서 대화하려고 이동 중
+    isSleeping: false,    // 침대에서 자는 중인가
+  },
+  // 오프라인 시뮬레이션 상태
+  simulation: {
+    active: false,        // 시뮬레이션 진행 중?
+    startTime: 0,         // 시작한 performance.now() 값
+    speed: 3,             // 시간 흐름 배속 (3배속)
+    eventsFired: new Set(), // 이미 발동된 이벤트 id들
+    cameraMode: 'cinematic', // 'cinematic' or 'free'
+    cinematicTarget: null,   // 카메라가 추적 중인 npc id
+  },
+};
+
+// NPC와 대화 가능한 최소 거리 (월드 유닛)
+const INTERACTION_RANGE = 3.0; // 약 3칸
+
+// =========================================================
+// 시나리오 스크립트 — 각 Day마다 밤에 벌어지는 NPC 동선
+// =========================================================
+// 각 이벤트는 timeOfDay(0~1) 시점에 발동. 유저가 자는 동안 진행됨.
+// 타입: 'move' (npc가 좌표로 이동), 'dialog' (말풍선), 'camera' (카메라 포커스)
+const NIGHT_SCRIPTS = {
+  1: [ // Day 1 밤 — 야미 책 픽업 + 차카 야경 촬영
+    { id: 'd1_intro', at: 0.76, type: 'narration', text: '밤이 깊어가는 동네...' },
+    { id: 'd1_yami_start', at: 0.80, type: 'move', npc: '야미', to: { x: 7.5, z: 7.5 }, 
+      narration: '🐱 야미가 조용히 서점 뒷문으로 향해요.' },
+    { id: 'd1_camera_yami', at: 0.80, type: 'camera', npc: '야미', label: '📸 결정적 순간' },
+    { id: 'd1_chaka_start', at: 0.85, type: 'move', npc: '차카', to: { x: -8, z: -3 }, 
+      narration: '🦝 차카는 사진관 앞에서 야경을 찍고 있어요.' },
+    { id: 'd1_chaka_camera', at: 0.90, type: 'camera', npc: '차카', label: '📸 차카의 렌즈' },
+    { id: 'd1_climax', at: 0.93, type: 'narration', text: '📷 찰칵! — 우연히 먼 곳의 야미가 찍혀요.' },
+    { id: 'd1_yami_back', at: 0.96, type: 'move', npc: '야미', to: { x: 0, z: 0 }, 
+      narration: '🐱 책을 받은 야미가 조용히 집으로 돌아가요.' },
+    { id: 'd1_end', at: 1.05, type: 'end' },
+  ],
+  // Day 2, 3 밤은 4단계에서 추가
+};
+
+function showNotification(msg) {
+  const el = document.getElementById('notification');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function showStoryModal(title, body) {
+  document.getElementById('story-modal-title').textContent = title;
+  document.getElementById('story-modal-body').textContent = body;
+  document.getElementById('story-modal').classList.add('show');
+}
+window.__closeStoryModal = function() {
+  document.getElementById('story-modal').classList.remove('show');
+};
+
+// =========================================================
+// 확인 모달 (예/아니오 선택)
+// =========================================================
+function showConfirmModal(title, body, onYes, yesLabel = '예', noLabel = '아니오') {
+  // 기존 모달이 있으면 제거
+  const existing = document.getElementById('confirm-modal');
+  if (existing) existing.remove();
+  
+  const modal = document.createElement('div');
+  modal.id = 'confirm-modal';
+  modal.className = 'story-modal show';
+  modal.innerHTML = `
+    <div class="story-modal-content" style="max-width: 440px;">
+      <h2 style="margin: 0 0 12px; font-size: 20px; color: #3a2a1a;">${title}</h2>
+      <p style="margin: 0 0 20px; line-height: 1.6; color: #555; white-space: pre-line;">${body}</p>
+      <div style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button id="confirm-no-btn" style="padding: 10px 20px; border: 1.5px solid #ccc; background: white; border-radius: 10px; cursor: pointer; font-size: 14px; color: #666;">${noLabel}</button>
+        <button id="confirm-yes-btn" style="padding: 10px 20px; border: none; background: linear-gradient(135deg, #7ab8e8, #5a98c8); color: white; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: bold;">${yesLabel}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  document.getElementById('confirm-yes-btn').addEventListener('click', () => {
+    modal.remove();
+    if (onYes) onYes();
+  });
+  document.getElementById('confirm-no-btn').addEventListener('click', () => {
+    modal.remove();
+  });
+}
+
+// =========================================================
+// 침대 클릭 처리 (오프라인 시뮬레이션 진입점)
+// =========================================================
+function handleBedClick() {
+  // 집이 아닌 곳에서 침대 클릭은 무시
+  if (!state.currentInterior || state.currentInterior.name !== '우리집') return;
+  
+  const dayNum = state.day;
+  const phaseKor = state.phase === 'morning' ? '아침' : state.phase === 'afternoon' ? '오후' : state.phase === 'evening' ? '저녁' : '밤';
+  
+  showConfirmModal(
+    '🛏️ 침대에 누울까요?',
+    `지금은 Day ${dayNum} ${phaseKor}이에요.\n자고 일어나면 다음 날 아침이 됩니다.\n\n자는 동안 동네에서 벌어지는 일들을 관찰할 수 있어요.`,
+    () => {
+      startSleepSequence();
+    },
+    '잠들기',
+    '아직 안 자'
+  );
+}
+
+// 플레이스홀더: 3단계에서 본격 구현 예정
+function startSleepSequence() {
+  // 침대에서 자기 시작 → 화면 어두워지고 → NPC 시뮬레이션 시작
+  state.user.isSleeping = true;
+  
+  // 해당 Day의 밤 스크립트가 없으면 기존 방식(즉시 다음날)으로 폴백
+  if (!NIGHT_SCRIPTS[state.day]) {
+    showNotification('💤 자러 가요...');
+    fadeToBlack(1500, () => {
+      if (state.viewMode === 'interior') exitInterior();
+      advanceToNightAndMorning();
+      state.user.isSleeping = false;
+      setTimeout(() => fadeFromBlack(1200), 500);
+    });
+    return;
+  }
+  
+  showNotification('💤 잠들고 있어요...');
+  
+  fadeToBlack(1500, () => {
+    // 1) 인테리어에서 나와 마을 뷰로 전환
+    if (state.viewMode === 'interior') exitInterior();
+    
+    // 2) 시뮬레이션 시작 상태로 세팅
+    const sim = state.simulation;
+    sim.active = true;
+    sim.startTime = performance.now();
+    sim.eventsFired = new Set();
+    sim.cameraMode = 'cinematic';
+    sim.cinematicTarget = null;
+    
+    // 3) 현재 시각을 "저녁 시작"으로 맞춤 (0.75 부근부터 스크립트 진행)
+    state.timeOfDay = 0.74;
+    state.phase = 'evening';
+    
+    // 4) 카메라 초기 위치 — 광장 중앙에서 약간 떨어져 동네 전체 조망
+    cameraAngle = Math.PI / 4;
+    cameraPitch = Math.PI / 3.5;
+    cameraDist = 28;
+    cameraTarget.set(0, 0, 0);
+    updateCamera();
+    
+    // 5) 시뮬레이션 UI 표시
+    showSimulationUI();
+    
+    // 6) 페이드 인
+    setTimeout(() => fadeFromBlack(1000), 300);
+  });
+}
+
+// 시뮬레이션 UI (배속 표시 + 스킵 버튼 + 이벤트 알림)
+function showSimulationUI() {
+  let ui = document.getElementById('simulation-ui');
+  if (ui) ui.remove();
+  ui = document.createElement('div');
+  ui.id = 'simulation-ui';
+  ui.style.cssText = `
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; display: flex; align-items: center; gap: 12px;
+    background: rgba(20, 20, 30, 0.85); color: white; padding: 10px 18px;
+    border-radius: 999px; font-size: 14px; backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.15);
+  `;
+  ui.innerHTML = `
+    <span style="display:flex; align-items:center; gap:6px;">🌙 <span id="sim-phase-label">밤이 깊어가요</span></span>
+    <span style="opacity:0.4;">·</span>
+    <span id="sim-event-label" style="color:#ffd4a0; min-width: 140px; text-align:center; transition:opacity 0.3s;"></span>
+    <span style="opacity:0.4;">·</span>
+    <button id="sim-skip-btn" style="background:#4a4a5a; border:none; color:white; padding:6px 14px; border-radius:999px; cursor:pointer; font-size:13px;">⏭ 건너뛰기</button>
+  `;
+  document.body.appendChild(ui);
+  document.getElementById('sim-skip-btn').addEventListener('click', () => {
+    endSimulation();
+  });
+}
+
+function hideSimulationUI() {
+  const ui = document.getElementById('simulation-ui');
+  if (ui) ui.remove();
+}
+
+function setSimulationEventLabel(text) {
+  const el = document.getElementById('sim-event-label');
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(() => {
+    el.textContent = text || '';
+    el.style.opacity = '1';
+  }, 150);
+}
+
+// 스크립트 이벤트 실행
+function fireScriptEvent(ev) {
+  console.log('[sim] fire event:', ev.id, ev.type);
+  
+  if (ev.type === 'narration' && ev.text) {
+    setSimulationEventLabel(ev.text);
+  }
+  
+  if (ev.type === 'move' && ev.npc && ev.to) {
+    const target = state.npcs.find(n => n.name === ev.npc);
+    if (target) {
+      const mesh = npcMeshes[target.id];
+      if (mesh) {
+        mesh.scriptedTarget = new THREE.Vector3(ev.to.x, 0, ev.to.z);
+        mesh.state = 'walking';
+      }
+    }
+    if (ev.narration) setSimulationEventLabel(ev.narration);
+  }
+  
+  if (ev.type === 'camera' && ev.npc) {
+    // 시네마틱 모드일 때만 카메라 이동 (자유 모드면 무시)
+    if (state.simulation.cameraMode === 'cinematic') {
+      const target = state.npcs.find(n => n.name === ev.npc);
+      if (target) {
+        state.simulation.cinematicTarget = target.id;
+      }
+    }
+    if (ev.label) {
+      // 상단 라벨은 이벤트 라벨로 덮어씌우되 앞에 ★ 표시
+      setSimulationEventLabel('★ ' + ev.label);
+    }
+  }
+  
+  if (ev.type === 'end') {
+    endSimulation();
+  }
+}
+
+// 매 프레임 호출 — 시뮬레이션 중 스크립트 체크 + 카메라 추적
+function runSimulationTick(dt) {
+  const sim = state.simulation;
+  if (!sim.active) return;
+  
+  // 1) 시간 흐름 (3배속)
+  state.timeOfDay += dt * 0.015 * sim.speed; // 기본 속도의 3배
+  if (state.timeOfDay >= 1) state.timeOfDay -= 1;
+  
+  // phase 업데이트
+  const t = state.timeOfDay;
+  if (t < 0.25) state.phase = 'night';
+  else if (t < 0.5) state.phase = 'morning';
+  else if (t < 0.7) state.phase = 'afternoon';
+  else if (t < 0.85) state.phase = 'evening';
+  else state.phase = 'night';
+  
+  // phase 라벨 업데이트
+  const phaseLabel = document.getElementById('sim-phase-label');
+  if (phaseLabel) {
+    const phaseKor = { night: '🌙 밤', morning: '🌅 아침', afternoon: '☀️ 오후', evening: '🌆 저녁' }[state.phase] || '';
+    phaseLabel.textContent = phaseKor;
+  }
+  
+  // 2) 스크립트 이벤트 체크
+  const script = NIGHT_SCRIPTS[state.day] || [];
+  // at 값이 0.74보다 작은 이벤트(다음날 아침 등)는 timeOfDay가 한바퀴 돈 값으로 취급
+  // 단순화: 시뮬레이션이 시작된 이후 경과한 "가상 시각"을 계산
+  const elapsedSec = (performance.now() - sim.startTime) / 1000;
+  // 시작 시 timeOfDay=0.74였으므로 가상 시각 = 0.74 + elapsedSec * 0.015 * speed
+  const virtualTime = 0.74 + elapsedSec * 0.015 * sim.speed;
+  
+  for (const ev of script) {
+    // ev.at이 0.74보다 작으면(예: 1.05) 다음 날로 봄
+    const evTime = ev.at < 0.74 ? ev.at + 1 : ev.at;
+    if (virtualTime >= evTime && !sim.eventsFired.has(ev.id)) {
+      sim.eventsFired.add(ev.id);
+      fireScriptEvent(ev);
+    }
+  }
+  
+  // 3) 시네마틱 카메라 추적 (cinematicTarget이 있을 때 부드럽게 따라감)
+  if (sim.cameraMode === 'cinematic' && sim.cinematicTarget != null) {
+    const targetMesh = npcMeshes[sim.cinematicTarget]?.mesh;
+    if (targetMesh) {
+      // cameraTarget을 NPC 위치로 부드럽게 lerp
+      cameraTarget.x += (targetMesh.position.x - cameraTarget.x) * dt * 2;
+      cameraTarget.z += (targetMesh.position.z - cameraTarget.z) * dt * 2;
+      // 거리도 살짝 줄여서 가까이 (18 정도)
+      cameraDist += (18 - cameraDist) * dt * 1.5;
+      updateCamera();
+    }
+  }
+}
+
+// 시뮬레이션 종료 — 페이드 아웃 → 집 복귀 → 다음날 아침
+function endSimulation() {
+  const sim = state.simulation;
+  if (!sim.active) return;
+  sim.active = false;
+  sim.cinematicTarget = null;
+  
+  // NPC들의 scriptedTarget 해제
+  Object.values(npcMeshes).forEach(n => { n.scriptedTarget = null; });
+  
+  hideSimulationUI();
+  
+  fadeToBlack(1200, () => {
+    state.user.isSleeping = false;
+    
+    // 카메라 기본 위치로
+    cameraAngle = Math.PI / 4;
+    cameraPitch = Math.PI / 3.5;
+    cameraDist = 30;
+    cameraTarget.set(0, 0, 0);
+    updateCamera();
+    
+    // 기존 advanceToNightAndMorning을 호출해서 리포트/퀘스트 생성 로직이 실행되게 함.
+    // 단, 밤 시뮬레이션은 이미 봤으므로 상태를 이미 '다음날 준비된' 것처럼 세팅.
+    // advanceToNightAndMorning 내부에서 API 호출 등으로 시간이 걸리므로, 그 사이 페이드 유지.
+    advanceToNightAndMorning().then(() => {
+      setTimeout(() => fadeFromBlack(1200), 400);
+    }).catch(err => {
+      console.error('[sim] endSimulation error:', err);
+      setTimeout(() => fadeFromBlack(1200), 400);
+    });
+  });
+}
+
+// (참고) triggerDay2OpeningIfNeeded는 더 이상 endSimulation에서 쓰지 않음.
+// advanceToNightAndMorning이 Day 2 오프닝을 직접 처리하기 때문에.
+
+// =========================================================
+// 페이드 인/아웃 시스템 (화면 전환 효과)
+// =========================================================
+function ensureFadeOverlay() {
+  let overlay = document.getElementById('fade-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'fade-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;opacity:0;pointer-events:none;z-index:99998;transition:opacity 0.5s ease;';
+    document.body.appendChild(overlay);
+  }
+  return overlay;
+}
+
+function fadeToBlack(durationMs = 1200, onComplete) {
+  const overlay = ensureFadeOverlay();
+  overlay.style.transition = `opacity ${durationMs}ms ease`;
+  overlay.style.pointerEvents = 'auto';
+  // 다음 프레임에 opacity 1로 (트랜지션 트리거)
+  requestAnimationFrame(() => {
+    overlay.style.opacity = '1';
+  });
+  setTimeout(() => {
+    if (onComplete) onComplete();
+  }, durationMs);
+}
+
+function fadeFromBlack(durationMs = 1000, onComplete) {
+  const overlay = ensureFadeOverlay();
+  overlay.style.transition = `opacity ${durationMs}ms ease`;
+  requestAnimationFrame(() => {
+    overlay.style.opacity = '0';
+  });
+  setTimeout(() => {
+    overlay.style.pointerEvents = 'none';
+    if (onComplete) onComplete();
+  }, durationMs);
+}
+
+// =========================================================
+// 이미지 에셋 시스템
+// =========================================================
+const ASSET_SLOTS = {
+  npc: [
+    'chaka_natural', 'chaka_happy', 'chaka_sad', 'chaka_surprised', 'chaka_thinking',
+    'yami_natural', 'yami_happy', 'yami_sad', 'yami_surprised', 'yami_angry',
+    'bamtol_natural', 'bamtol_happy', 'bamtol_angry', 'bamtol_surprised', 'bamtol_sad',
+  ],
+  evidence: [
+    'chaka_photo_evidence', 'bamtol_ledger', 'missing_book_shelf', 
+    'photostudio_window', 'book_reservation_slip', 'bookclub_poster',
+    'missing_book_found',
+  ],
+};
+
+const ASSET_META = {
+  chaka_natural: { emoji: '🦝', label: '차카 평소' },
+  chaka_happy: { emoji: '🦝', label: '차카 기쁨' },
+  chaka_sad: { emoji: '🦝', label: '차카 슬픔' },
+  chaka_surprised: { emoji: '🦝', label: '차카 놀람' },
+  chaka_thinking: { emoji: '🦝', label: '차카 고민' },
+  yami_natural: { emoji: '🐱', label: '야미 평소' },
+  yami_happy: { emoji: '🐱', label: '야미 기쁨' },
+  yami_sad: { emoji: '🐱', label: '야미 슬픔' },
+  yami_surprised: { emoji: '🐱', label: '야미 놀람' },
+  yami_angry: { emoji: '🐱', label: '야미 속상' },
+  bamtol_natural: { emoji: '🐿️', label: '밤톨 평소' },
+  bamtol_happy: { emoji: '🐿️', label: '밤톨 기쁨' },
+  bamtol_angry: { emoji: '🐿️', label: '밤톨 분노' },
+  bamtol_surprised: { emoji: '🐿️', label: '밤톨 놀람' },
+  bamtol_sad: { emoji: '🐿️', label: '밤톨 슬픔' },
+  chaka_photo_evidence: { emoji: '📷', label: '차카 야경사진' },
+  bamtol_ledger: { emoji: '📖', label: '서점 장부' },
+  missing_book_shelf: { emoji: '📚', label: '빈 선반' },
+  photostudio_window: { emoji: '🖼️', label: '사진관 쇼윈도' },
+  book_reservation_slip: { emoji: '🎫', label: '야미 예약증' },
+  bookclub_poster: { emoji: '📝', label: '독서모임 포스터' },
+  missing_book_found: { emoji: '📖', label: '선반 밑 책' },
+};
+
+// 업로드된 이미지 저장 (key -> dataURL)
+// assets.js가 먼저 로드됐다면 거기 있는 이미지들이 기본 장착됨.
+// 그 후 이미지 업로드 모달로 덮어쓰거나 추가할 수 있음.
+const assetRegistry = Object.assign({}, window.PRELOADED_ASSETS || {});
+console.log('[assets] 초기 장착:', Object.keys(assetRegistry).length + '장');
+
+function saveAssetToStorage() {
+  try {
+    // storage에 저장 (용량 때문에 skip, 메모리에만 유지)
+  } catch(e) {}
+}
+
+async function loadAssetFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleAssetFiles(files) {
+  const allSlots = [...ASSET_SLOTS.npc, ...ASSET_SLOTS.evidence];
+  let matched = 0;
+  for (const file of files) {
+    const name = file.name.toLowerCase().replace(/\.(png|jpg|jpeg|webp)$/i, '');
+    // 파일명에서 매칭 키 찾기
+    const matchedKey = allSlots.find(k => name.includes(k.toLowerCase()));
+    if (matchedKey) {
+      try {
+        const dataUrl = await loadAssetFile(file);
+        assetRegistry[matchedKey] = dataUrl;
+        matched++;
+      } catch (e) {
+        console.error('Failed to load:', file.name);
+      }
+    } else {
+      console.warn('No match for file:', file.name);
+    }
+  }
+  renderAssetSlots();
+  showNotification(`✅ ${matched}개 이미지 등록됨 (총 ${Object.keys(assetRegistry).length}/${allSlots.length})`);
+}
+
+function renderAssetSlots() {
+  const npcGrid = document.getElementById('asset-grid-npc');
+  const evidGrid = document.getElementById('asset-grid-evidence');
+  if (!npcGrid || !evidGrid) return;
+  const makeSlot = (key) => {
+    const meta = ASSET_META[key];
+    const has = assetRegistry[key];
+    return `<div class="asset-slot ${has ? 'has' : ''}">
+      <div class="thumb">${has ? `<img src="${has}" />` : meta.emoji}</div>
+      <div>${meta.label}</div>
+    </div>`;
+  };
+  npcGrid.innerHTML = ASSET_SLOTS.npc.map(makeSlot).join('');
+  evidGrid.innerHTML = ASSET_SLOTS.evidence.map(makeSlot).join('');
+}
+
+window.__openAssets = function() {
+  renderAssetSlots();
+  document.getElementById('asset-modal').classList.add('show');
+};
+window.__closeAssets = function() {
+  document.getElementById('asset-modal').classList.remove('show');
+};
+
+// 드롭존 이벤트 등록 (DOM 로드 후)
+setTimeout(() => {
+  const dropzone = document.getElementById('asset-dropzone');
+  const fileInput = document.getElementById('asset-file');
+  if (dropzone && fileInput) {
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => handleAssetFiles(e.target.files));
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('drag');
+      handleAssetFiles(e.dataTransfer.files);
+    });
+  }
+}, 100);
+
+// =========================================================
+// 증거 팝업 시스템
+// =========================================================
+const collectedEvidence = new Set();
+
+function showEvidencePopup(assetKey, context) {
+  const img = assetRegistry[assetKey];
+  if (!img) {
+    // 이미지 없으면 notification만
+    showNotification(`📸 증거 발견: ${ASSET_META[assetKey]?.label || assetKey}`);
+    collectedEvidence.add(assetKey);
+    return;
+  }
+  document.getElementById('evidence-img').src = img;
+  document.getElementById('evidence-context').textContent = context || '';
+  document.getElementById('evidence-modal').classList.add('show');
+  collectedEvidence.add(assetKey);
+}
+window.__closeEvidence = function() {
+  document.getElementById('evidence-modal').classList.remove('show');
+};
+
+// =========================================================
+// 제타 스타일 팝업 채팅
+// =========================================================
+let zetaCurrentNpcId = null;
+
+function detectEmotion(text, npcId) {
+  // AI 응답에서 감정 추출 (대괄호 태그 또는 키워드)
+  const tagMatch = text.match(/\[감정:([a-z]+)\]/i);
+  if (tagMatch) return tagMatch[1].toLowerCase();
+  
+  const lower = text.toLowerCase();
+  // 긍정
+  if (/고마워|좋아|기쁘|행복|감사|최고|웃|하하|히히|즐거|neutral 아닌/.test(text)) return 'happy';
+  // 슬픔
+  if (/슬프|아파|힘들|눈물|울고|속상|미안|괴로|외로/.test(text)) return 'sad';
+  // 놀람
+  if (/!!|놀라|헉|어머|진짜요\?|정말\?|이럴수가|충격/.test(text)) return 'surprised';
+  // 분노 (밤톨·야미)
+  if (/화나|짜증|그만|싫어|용납|감히|뭐야|!!|쿵!|어쩌자는/.test(text)) {
+    if (npcId === 'story_bamtol') return 'angry';
+    if (npcId === 'story_yami') return 'angry';
+  }
+  // 고민 (차카 전용)
+  if (npcId === 'story_chaka' && /음\.\.|글쎄|아무래도|잘 모르|고민/.test(text)) return 'thinking';
+  
+  return 'natural';
+}
+
+function getPortraitKey(npcId, emotion) {
+  const prefix = npcId.replace('story_', '');
+  const key = `${prefix}_${emotion}`;
+  if (assetRegistry[key]) return key;
+  // 폴백: natural
+  const fallback = `${prefix}_natural`;
+  return assetRegistry[fallback] ? fallback : null;
+}
+
+function setZetaPortrait(npcId, emotion) {
+  const key = getPortraitKey(npcId, emotion);
+  const imgEl = document.getElementById('zeta-portrait');
+  if (!key) {
+    imgEl.classList.remove('show');
+    imgEl.src = '';
+    document.getElementById('zeta-portrait-area').style.background = 
+      'linear-gradient(135deg, #fef3e7, #fde8ec)';
+    return;
+  }
+  const current = imgEl.src;
+  const newSrc = assetRegistry[key];
+  if (current === newSrc) return;
+  imgEl.classList.remove('show');
+  setTimeout(() => {
+    imgEl.src = newSrc;
+    imgEl.onload = () => imgEl.classList.add('show');
+  }, 150);
+}
+
+function openZeta(npcId) {
+  const npc = state.npcs.find(n => n.id === npcId);
+  if (!npc) return;
+  zetaCurrentNpcId = npcId;
+  state.selectedNpcId = npcId;
+  
+  document.getElementById('zeta-name').textContent = `${npc.emoji} ${npc.name}`;
+  document.getElementById('zeta-sub').textContent = `${npc.job} · ${npc.personality}`;
+  document.getElementById('zeta-affinity').textContent = npc.affinity;
+  
+  // 기본 표정: natural
+  setZetaPortrait(npcId, 'natural');
+  
+  // 기존 대화 이력 표시
+  const messagesEl = document.getElementById('zeta-messages');
+  messagesEl.innerHTML = '';
+  const history = state.chatHistory[npcId] || [];
+  if (history.length === 0) {
+    const sys = document.createElement('div');
+    sys.className = 'zeta-msg system';
+    sys.textContent = `${npc.name}와의 첫 만남`;
+    messagesEl.appendChild(sys);
+  }
+  history.forEach(m => {
+    const msg = document.createElement('div');
+    msg.className = `zeta-msg ${m.role}`;
+    msg.textContent = m.role === 'user' ? m.text : `${m.text}`;
+    messagesEl.appendChild(msg);
+  });
+  
+  // 최근 메시지에서 표정 업데이트
+  const lastNpcMsg = [...history].reverse().find(m => m.role === 'npc');
+  if (lastNpcMsg) {
+    setZetaPortrait(npcId, detectEmotion(lastNpcMsg.text, npcId));
+  }
+  
+  document.getElementById('zeta-chat').classList.add('show');
+  setTimeout(() => {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    document.getElementById('zeta-input').focus();
+  }, 300);
+}
+
+window.__closeZeta = function() {
+  document.getElementById('zeta-chat').classList.remove('show');
+  zetaCurrentNpcId = null;
+};
+
+window.__zetaSend = async function() {
+  const input = document.getElementById('zeta-input');
+  const text = input.value.trim();
+  console.log('[zetaSend] clicked', { text, zetaCurrentNpcId, loading: state.loading });
+  if (!text || !zetaCurrentNpcId || state.loading) {
+    console.warn('[zetaSend] aborted', { reason: !text ? 'no text' : !zetaCurrentNpcId ? 'no npc' : 'loading' });
+    return;
+  }
+  input.value = '';
+  
+  const npc = state.npcs.find(n => n.id === zetaCurrentNpcId);
+  const npcId = npc.id;
+  const messagesEl = document.getElementById('zeta-messages');
+  
+  // 유저 메시지 추가
+  const userMsg = document.createElement('div');
+  userMsg.className = 'zeta-msg user';
+  userMsg.textContent = text;
+  messagesEl.appendChild(userMsg);
+  
+  const history = state.chatHistory[npcId] || [];
+  history.push({ role: 'user', text });
+  state.chatHistory[npcId] = history;
+  
+  // 타이핑 인디케이터
+  const typing = document.createElement('div');
+  typing.className = 'zeta-typing';
+  typing.innerHTML = '<span></span><span></span><span></span>';
+  messagesEl.appendChild(typing);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  
+  try {
+    state.loading = true;
+    let storyContext = '';
+    if (npc.isStory) {
+      const stage = state.storyStage;
+      if (npc.id === 'story_chaka') {
+        storyContext = `\n\n[배경 - 너는 사진사 차카다]\n- 너는 어젯밤 사진관 앞에서 야경 사진을 찍었다.\n- 나중에 사진을 본 밤톨이 "야미가 책을 훔쳤다"고 오해했다는 걸 ${stage === 'day1' ? '아직 모른다' : '알게 되었다'}.\n- 너는 단지 야경이 아름다워서 찍었을 뿐이고, 야미가 뭘 하는지는 잘 못 봤다.\n- ${stage === 'quest_active' || stage === 'day2_triggered' ? '지금은 상황이 혼란스러워서 사진을 내려야 할지 고민 중이다.' : ''}`;
+      } else if (npc.id === 'story_yami') {
+        storyContext = `\n\n[배경 - 너는 문학도 학생 야미다]\n- 너는 밤톨 서점에 책('별의 시간')을 예약했고, 뒷문 열쇠를 받아 밤에 책을 픽업했다. 훔친 게 아니다.\n- 독서 모임을 준비 중이고, 첫 모임 장소로 밤톨 서점을 빌리기로 했었다.\n- ${stage === 'day2_triggered' ? '오늘 도둑이라는 소문을 듣고 큰 충격을 받았다. 억울하고 슬프다.' : ''}\n- ${stage === 'quest_active' ? '밤톨이 독서 모임 장소 대여를 거절했다. 꿈이 흔들린다.' : ''}\n- ${stage === 'resolved' ? '사건이 마무리됐다.' : ''}`;
+      } else if (npc.id === 'story_bamtol') {
+        storyContext = `\n\n[배경 - 너는 서점 주인 밤톨이다]\n- 너는 야미가 책을 "훔쳤다"고 믿고 있다. 차카의 야경 사진 한 장이 근거다.\n- 사실은 야미가 예약한 책이고, 너의 장부에 기록이 있다. 하지만 감정이 앞서서 확인을 못 하고 있다.\n- 심지어 장부에 기록되지 않은 다른 책 한 권도 사라져서 더 의심하고 있다.\n- ${stage === 'day2_triggered' ? '지금 화가 나 있고, 누구든 이 얘기를 꺼내면 방어적이다.' : ''}\n- ${stage === 'quest_active' ? '야미가 독서 모임 장소를 빌려달라고 했지만 거절했다.' : ''}`;
+      }
+      storyContext += `\n\n답변 시작 또는 끝에 [감정:natural|happy|sad|surprised|angry|thinking] 태그를 붙여서 네 현재 감정을 표현해. 예: "그건 말이다쿵... [감정:angry]"`;
+    }
+    
+    const system = `너는 동물 주민 동네 게임의 NPC다. 귀엽고 캐주얼한 톤으로 짧게 대답해.
+
+너의 정보:
+- 이름: ${npc.name} (${npc.species} ${npc.emoji})
+- 직업: ${npc.job}
+- 꿈: ${npc.dream} (${npc.dreamProgress}%)
+- 성격: ${npc.personality}
+- 말버릇: "${npc.speechHabit}" (자주 섞어)
+- 호감도: ${npc.affinity}/100
+
+규칙:
+- 1-2문장만
+- 말버릇을 자주 붙여
+- 호감도 낮으면 거리감 있게, 높으면 친근하게${storyContext}
+
+최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
+    
+    const context = history.slice(-6).map(m => `${m.role === 'user' ? '유저' : npc.name}: ${m.text}`).join('\n');
+    const rawResponse = await callClaude(system, context);
+    
+    // 감정 태그 제거한 깨끗한 응답
+    const cleanResponse = rawResponse.replace(/\[감정:[a-z]+\]/gi, '').trim();
+    const emotion = detectEmotion(rawResponse, npcId);
+    
+    // 타이핑 제거
+    typing.remove();
+    
+    // NPC 답변 추가
+    const npcMsg = document.createElement('div');
+    npcMsg.className = 'zeta-msg npc';
+    npcMsg.textContent = cleanResponse;
+    messagesEl.appendChild(npcMsg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    
+    // 표정 전환
+    setZetaPortrait(npcId, emotion);
+    
+    history.push({ role: 'npc', text: cleanResponse });
+    state.chatHistory[npcId] = history;
+    
+    // 호감도/꿈 진행도 소폭 증가
+    npc.affinity = Math.min(100, npc.affinity + 3);
+    npc.dreamProgress = Math.min(100, npc.dreamProgress + 2);
+    document.getElementById('zeta-affinity').textContent = npc.affinity;
+    
+    renderNpcList();
+    
+    // 특정 키워드 트리거 — 증거 자동 팝업
+    if (npc.id === 'story_chaka' && /사진|야경|찍/.test(cleanResponse) && !collectedEvidence.has('chaka_photo_evidence')) {
+      setTimeout(() => showEvidencePopup('chaka_photo_evidence', '차카가 찍은 그 날 밤의 사진'), 1500);
+    }
+    if (npc.id === 'story_yami' && /독서 모임|독서모임|포스터/.test(cleanResponse) && !collectedEvidence.has('bookclub_poster')) {
+      setTimeout(() => showEvidencePopup('bookclub_poster', '야미가 준비하던 독서 모임 포스터'), 1500);
+    }
+    if (npc.id === 'story_bamtol' && /장부|예약/.test(cleanResponse) && !collectedEvidence.has('bamtol_ledger')) {
+      setTimeout(() => showEvidencePopup('bamtol_ledger', '밤톨 서점의 장부'), 1500);
+    }
+  } catch (err) {
+    console.error('[zetaSend] error', err);
+    try { typing.remove(); } catch(e) {}
+    const errMsg = document.createElement('div');
+    errMsg.className = 'zeta-msg system';
+    errMsg.textContent = '오류가 발생했어요: ' + (err.message || err);
+    messagesEl.appendChild(errMsg);
+  } finally {
+    state.loading = false;
+  }
+};
+
+// Enter 키 전송
+setTimeout(() => {
+  const input = document.getElementById('zeta-input');
+  if (input) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__zetaSend(); }
+    });
+  }
+}, 100);
+function setLoading(flag, msg = '불러오는 중...') {
+  state.loading = flag;
+  const overlay = document.getElementById('loading-overlay');
+  document.getElementById('loading-msg').textContent = msg;
+  if (flag) overlay.classList.add('show');
+  else overlay.classList.remove('show');
+}
+
+// =========================================================
+// Claude API 호출
+// =========================================================
+async function callClaude(systemPrompt, userPrompt, expectJSON = false) {
+  try {
+    console.log('[callClaude] start', expectJSON ? 'JSON' : 'text');
+    // Vercel 서버리스 함수 경유 (API 키는 서버 환경변수에 보관)
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system: systemPrompt,
+        user: userPrompt,
+        max_tokens: 1000,
+      })
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('[callClaude] HTTP error:', response.status, errText);
+      throw new Error('API HTTP ' + response.status + ': ' + errText);
+    }
+    const data = await response.json();
+    console.log('[callClaude] got response');
+    const text = data.text || '';
+    if (expectJSON) {
+      const clean = text.replace(/```json|```/g, "").trim();
+      const match = clean.match(/\{[\s\S]*\}/);
+      const jsonStr = match ? match[0] : clean;
+      try {
+        return JSON.parse(jsonStr);
+      } catch (parseErr) {
+        console.error('[callClaude] JSON parse error, raw text:', text);
+        throw new Error('JSON parse failed');
+      }
+    }
+    return text.trim();
+  } catch (err) {
+    console.error('[callClaude] error:', err);
+    throw err;
+  }
+}
+
+// =========================================================
+// Three.js 씬 설정
+// =========================================================
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xfef3e7, 20, 60);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+let cameraAngle = Math.PI / 4;
+let cameraPitch = Math.PI / 3.5;
+let cameraDist = 30;
+const cameraTarget = new THREE.Vector3(0, 0, 0);
+
+function updateCamera() {
+  camera.position.x = cameraTarget.x + Math.sin(cameraAngle) * Math.sin(cameraPitch) * cameraDist;
+  camera.position.z = cameraTarget.z + Math.cos(cameraAngle) * Math.sin(cameraPitch) * cameraDist;
+  camera.position.y = cameraTarget.y + Math.cos(cameraPitch) * cameraDist;
+  camera.lookAt(cameraTarget);
+}
+updateCamera();
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+// 조명
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+sunLight.position.set(10, 20, 5);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 1024;
+sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.camera.left = -20;
+sunLight.shadow.camera.right = 20;
+sunLight.shadow.camera.top = 20;
+sunLight.shadow.camera.bottom = -20;
+scene.add(sunLight);
+
+// 지면 (잔디)
+const groundGeo = new THREE.CircleGeometry(20, 48);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0xa8dcc3 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// 길
+const pathMat = new THREE.MeshStandardMaterial({ color: 0xf0e4d4 });
+LOCATIONS.slice(1).forEach(loc => {
+  const pathGeo = new THREE.PlaneGeometry(1.2, Math.hypot(loc.x, loc.z));
+  const path = new THREE.Mesh(pathGeo, pathMat);
+  path.rotation.x = -Math.PI/2;
+  path.position.set(loc.x/2, 0.01, loc.z/2);
+  path.rotation.z = Math.atan2(loc.x, loc.z);
+  path.receiveShadow = true;
+  scene.add(path);
+});
+
+// 광장 바닥
+const plazaGeo = new THREE.CircleGeometry(2.5, 32);
+const plaza = new THREE.Mesh(plazaGeo, new THREE.MeshStandardMaterial({ color: 0xfff0cc }));
+plaza.rotation.x = -Math.PI/2;
+plaza.position.y = 0.02;
+plaza.receiveShadow = true;
+scene.add(plaza);
+
+// 건물 생성
+const buildings = [];
+LOCATIONS.slice(1, 5).forEach((loc, i) => {
+  const group = new THREE.Group();
+  // 본체
+  const bodyGeo = new THREE.BoxGeometry(3, 2.2, 3);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: loc.color });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 1.1;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+  // 지붕
+  const roofGeo = new THREE.ConeGeometry(2.3, 1.3, 4);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0xe89880 });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.y = 2.85;
+  roof.rotation.y = Math.PI/4;
+  roof.castShadow = true;
+  group.add(roof);
+  // 창문 (노란 네모) - 밤에 빛남
+  const windowMat = new THREE.MeshStandardMaterial({ color: 0xfff0cc, emissive: 0x000000 });
+  const winGeo = new THREE.PlaneGeometry(0.5, 0.5);
+  for (let j = -1; j <= 1; j += 2) {
+    const win = new THREE.Mesh(winGeo, windowMat);
+    win.position.set(j * 0.8, 1.2, 1.51);
+    group.add(win);
+  }
+  // 간판 이모지 대신 색칠된 깃발
+  const flagGeo = new THREE.BoxGeometry(0.1, 1.5, 0.1);
+  const flag = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+  flag.position.set(1.2, 2.5, 1.2);
+  group.add(flag);
+  
+  group.position.set(loc.x, 0, loc.z);
+  group.userData = { type: 'building', name: loc.name, windowMat, loc };
+  scene.add(group);
+  buildings.push(group);
+});
+
+// =========================================================
+// 유저의 집 (북쪽 외곽)
+// =========================================================
+(function buildUserHouseExterior() {
+  const homeLoc = LOCATIONS.find(l => l.name === '우리집');
+  if (!homeLoc) return;
+  const group = new THREE.Group();
+  
+  // 본체 — 일반 상점보다 살짝 작고 따뜻한 크림색
+  const bodyGeo = new THREE.BoxGeometry(3.4, 2.4, 3.4);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: homeLoc.color });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 1.2;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+  
+  // 지붕 — 경사 지붕 (삼각기둥 형태)
+  const roofGeo = new THREE.ConeGeometry(2.6, 1.6, 4);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0xc77548 }); // 주황빛 기와
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.y = 3.2;
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  group.add(roof);
+  
+  // 현관문 (갈색)
+  const doorMat = new THREE.MeshStandardMaterial({ color: 0x6b4423 });
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.4), doorMat);
+  door.position.set(0, 0.7, 1.71);
+  group.add(door);
+  // 문손잡이 (금색 점)
+  const knob = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xd4af37, emissive: 0x3a2a0a })
+  );
+  knob.position.set(0.25, 0.7, 1.73);
+  group.add(knob);
+  
+  // 창문 2개 (앞면, 밤에 빛남) — 창틀을 살짝 뒤에 두고 창문은 앞쪽
+  const windowMat = new THREE.MeshStandardMaterial({ color: 0xfff0cc, emissive: 0x000000 });
+  for (const x of [-1.1, 1.1]) {
+    // 창틀 (흰색, 뒤쪽)
+    const frame = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.85, 0.85),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    frame.position.set(x, 1.5, 1.705);
+    group.add(frame);
+    // 창문 (앞쪽, 발광)
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.65, 0.65), windowMat);
+    win.position.set(x, 1.5, 1.72);
+    group.add(win);
+  }
+  
+  // 굴뚝 (옆면 위쪽)
+  const chimney = new THREE.Mesh(
+    new THREE.BoxGeometry(0.4, 1.0, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x8b5a3c })
+  );
+  chimney.position.set(-0.9, 3.3, -0.3);
+  chimney.castShadow = true;
+  group.add(chimney);
+  
+  // 작은 팻말 ("우리집")
+  const sign = new THREE.Mesh(
+    new THREE.BoxGeometry(1.0, 0.35, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0xf5e8d0 })
+  );
+  sign.position.set(0, 1.8, 1.73);
+  group.add(sign);
+  
+  group.position.set(homeLoc.x, 0, homeLoc.z);
+  group.userData = { type: 'building', name: homeLoc.name, windowMat, loc: homeLoc, isHome: true };
+  scene.add(group);
+  buildings.push(group);
+})();
+
+// 연못
+const pondLoc = LOCATIONS[5];
+const pondGeo = new THREE.CircleGeometry(2.2, 32);
+const pondMat = new THREE.MeshStandardMaterial({ color: 0xa8d0dc, transparent: true, opacity: 0.85 });
+const pond = new THREE.Mesh(pondGeo, pondMat);
+pond.rotation.x = -Math.PI/2;
+pond.position.set(pondLoc.x, 0.05, pondLoc.z);
+scene.add(pond);
+
+// 나무
+function createTree(x, z) {
+  const tree = new THREE.Group();
+  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 1.2, 8);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  trunk.position.y = 0.6;
+  trunk.castShadow = true;
+  tree.add(trunk);
+  const leavesGeo = new THREE.SphereGeometry(1.1, 12, 12);
+  const leavesMat = new THREE.MeshStandardMaterial({ color: 0x6bb585 });
+  const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+  leaves.position.y = 1.7;
+  leaves.castShadow = true;
+  tree.add(leaves);
+  tree.position.set(x, 0, z);
+  return tree;
+}
+for (let i = 0; i < 18; i++) {
+  const a = (i / 18) * Math.PI * 2;
+  const r = 13 + Math.random() * 5;
+  const t = createTree(Math.cos(a) * r, Math.sin(a) * r);
+  scene.add(t);
+}
+// 산재된 작은 나무
+for (let i = 0; i < 8; i++) {
+  const x = (Math.random() - 0.5) * 18;
+  const z = (Math.random() - 0.5) * 18;
+  if (Math.hypot(x, z) > 3 && LOCATIONS.every(l => Math.hypot(l.x-x, l.z-z) > 3)) {
+    const t = createTree(x, z);
+    t.scale.setScalar(0.6 + Math.random() * 0.3);
+    scene.add(t);
+  }
+}
+
+// 꽃
+for (let i = 0; i < 30; i++) {
+  const x = (Math.random() - 0.5) * 28;
+  const z = (Math.random() - 0.5) * 28;
+  if (Math.hypot(x, z) < 19 && Math.hypot(x, z) > 3) {
+    const flowerColors = [0xff9ebb, 0xffd580, 0xc9b2f5, 0xfad4d8];
+    const flower = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 6, 6),
+      new THREE.MeshStandardMaterial({ color: flowerColors[i % flowerColors.length] })
+    );
+    flower.position.set(x, 0.18, z);
+    scene.add(flower);
+  }
+}
+
+// =========================================================
+// NPC 3D 아바타
+// =========================================================
+function createNpcMesh(animal) {
+  const group = new THREE.Group();
+  // 몸통
+  const bodyGeo = new THREE.SphereGeometry(0.45, 16, 12);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: animal.color });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.55;
+  body.scale.y = 1.1;
+  body.castShadow = true;
+  group.add(body);
+  // 머리
+  const headGeo = new THREE.SphereGeometry(0.4, 16, 12);
+  const head = new THREE.Mesh(headGeo, bodyMat);
+  head.position.y = 1.3;
+  head.castShadow = true;
+  group.add(head);
+  // 눈
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+  const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8);
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeL.position.set(-0.15, 1.35, 0.35);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+  eyeR.position.set(0.15, 1.35, 0.35);
+  group.add(eyeL); group.add(eyeR);
+  // 볼 홍조
+  const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff9ebb, transparent: true, opacity: 0.5 });
+  const cheekGeo = new THREE.SphereGeometry(0.08, 8, 8);
+  const cheekL = new THREE.Mesh(cheekGeo, cheekMat);
+  cheekL.position.set(-0.25, 1.2, 0.3);
+  const cheekR = new THREE.Mesh(cheekGeo, cheekMat);
+  cheekR.position.set(0.25, 1.2, 0.3);
+  group.add(cheekL); group.add(cheekR);
+  // 귀/뿔 (종족별 헤더 마커)
+  if (animal.species === '토끼') {
+    const earGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 8);
+    const earL = new THREE.Mesh(earGeo, bodyMat);
+    earL.position.set(-0.12, 1.75, 0);
+    earL.rotation.z = 0.1;
+    const earR = new THREE.Mesh(earGeo, bodyMat);
+    earR.position.set(0.12, 1.75, 0);
+    earR.rotation.z = -0.1;
+    group.add(earL); group.add(earR);
+  } else if (animal.species === '고양이') {
+    const earGeo = new THREE.ConeGeometry(0.12, 0.25, 4);
+    const earL = new THREE.Mesh(earGeo, bodyMat);
+    earL.position.set(-0.2, 1.65, 0);
+    const earR = new THREE.Mesh(earGeo, bodyMat);
+    earR.position.set(0.2, 1.65, 0);
+    group.add(earL); group.add(earR);
+  } else if (animal.species === '부엉이') {
+    const tuftGeo = new THREE.ConeGeometry(0.08, 0.2, 4);
+    const tuftL = new THREE.Mesh(tuftGeo, bodyMat);
+    tuftL.position.set(-0.18, 1.7, 0);
+    const tuftR = new THREE.Mesh(tuftGeo, bodyMat);
+    tuftR.position.set(0.18, 1.7, 0);
+    group.add(tuftL); group.add(tuftR);
+  } else if (animal.species === '앵무새') {
+    const crestGeo = new THREE.ConeGeometry(0.15, 0.35, 6);
+    const crest = new THREE.Mesh(crestGeo, new THREE.MeshStandardMaterial({ color: 0xff7a9c }));
+    crest.position.set(0, 1.8, 0);
+    group.add(crest);
+    // 부리
+    const beakGeo = new THREE.ConeGeometry(0.08, 0.2, 4);
+    const beak = new THREE.Mesh(beakGeo, new THREE.MeshStandardMaterial({ color: 0xffa76b }));
+    beak.position.set(0, 1.28, 0.4);
+    beak.rotation.x = Math.PI/2;
+    group.add(beak);
+  } else if (animal.species === '거북이') {
+    // 등껍질
+    const shellGeo = new THREE.SphereGeometry(0.5, 16, 12, 0, Math.PI * 2, 0, Math.PI/2);
+    const shellMat = new THREE.MeshStandardMaterial({ color: 0x6bb585 });
+    const shell = new THREE.Mesh(shellGeo, shellMat);
+    shell.position.y = 0.7;
+    shell.castShadow = true;
+    group.add(shell);
+  }
+  return group;
+}
+
+// =========================================================
+// 유저 아바타 (사람)
+// =========================================================
+function createUserMesh() {
+  const group = new THREE.Group();
+  // 동물 NPC보다 살짝 큼 (동물은 ~1.7 높이, 유저는 ~2.0 높이)
+  const skinColor = 0xffd9b3;    // 피부톤
+  const hairColor = 0x3a2a1a;    // 머리카락 짙은 갈색
+  const shirtColor = 0x7ab8e8;   // 파스텔 블루 셔츠
+  const pantsColor = 0x6b4423;   // 갈색 바지
+  const shoeColor = 0x2a1a10;    // 어두운 신발
+
+  // 다리 (2개)
+  const legGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.6, 10);
+  const legMat = new THREE.MeshStandardMaterial({ color: pantsColor });
+  for (const x of [-0.13, 0.13]) {
+    const leg = new THREE.Mesh(legGeo, legMat);
+    leg.position.set(x, 0.3, 0);
+    leg.castShadow = true;
+    group.add(leg);
+    // 신발
+    const shoe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.1, 0.28),
+      new THREE.MeshStandardMaterial({ color: shoeColor })
+    );
+    shoe.position.set(x, 0.05, 0.04);
+    shoe.castShadow = true;
+    group.add(shoe);
+  }
+
+  // 몸통 (셔츠)
+  const torsoGeo = new THREE.CylinderGeometry(0.28, 0.23, 0.7, 12);
+  const torso = new THREE.Mesh(torsoGeo, new THREE.MeshStandardMaterial({ color: shirtColor }));
+  torso.position.y = 0.95;
+  torso.castShadow = true;
+  group.add(torso);
+
+  // 팔 (2개, 셔츠 색상)
+  const armGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.55, 8);
+  const armMat = new THREE.MeshStandardMaterial({ color: shirtColor });
+  for (const x of [-0.32, 0.32]) {
+    const arm = new THREE.Mesh(armGeo, armMat);
+    arm.position.set(x, 0.95, 0);
+    arm.castShadow = true;
+    group.add(arm);
+    // 손 (피부톤)
+    const hand = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 8, 8),
+      new THREE.MeshStandardMaterial({ color: skinColor })
+    );
+    hand.position.set(x, 0.65, 0);
+    hand.castShadow = true;
+    group.add(hand);
+  }
+
+  // 목
+  const neckGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.1, 8);
+  const neck = new THREE.Mesh(neckGeo, new THREE.MeshStandardMaterial({ color: skinColor }));
+  neck.position.y = 1.35;
+  group.add(neck);
+
+  // 머리 (둥글둥글하게)
+  const headGeo = new THREE.SphereGeometry(0.3, 16, 14);
+  const head = new THREE.Mesh(headGeo, new THREE.MeshStandardMaterial({ color: skinColor }));
+  head.position.y = 1.65;
+  head.castShadow = true;
+  group.add(head);
+
+  // 머리카락 (머리 뒤쪽 + 위쪽 덮기)
+  const hairGeo = new THREE.SphereGeometry(0.32, 16, 14, 0, Math.PI * 2, 0, Math.PI / 1.7);
+  const hair = new THREE.Mesh(hairGeo, new THREE.MeshStandardMaterial({ color: hairColor }));
+  hair.position.y = 1.68;
+  hair.castShadow = true;
+  group.add(hair);
+
+  // 눈 (검은 점 2개)
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+  const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
+  for (const x of [-0.1, 0.1]) {
+    const eye = new THREE.Mesh(eyeGeo, eyeMat);
+    eye.position.set(x, 1.68, 0.27);
+    group.add(eye);
+  }
+
+  // 입 (작은 선)
+  const mouth = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 0.012, 0.01),
+    new THREE.MeshStandardMaterial({ color: 0x8b4a3a })
+  );
+  mouth.position.set(0, 1.56, 0.29);
+  group.add(mouth);
+
+  // 볼 홍조 (NPC들과 톤 맞춤)
+  const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff9ebb, transparent: true, opacity: 0.5 });
+  const cheekGeo = new THREE.SphereGeometry(0.05, 8, 8);
+  for (const x of [-0.18, 0.18]) {
+    const cheek = new THREE.Mesh(cheekGeo, cheekMat);
+    cheek.position.set(x, 1.6, 0.22);
+    group.add(cheek);
+  }
+
+  return group;
+}
+
+// =========================================================
+// 목적지 마커 (원형 바운드, 펄스 애니메이션)
+// =========================================================
+let destinationMarker = null;
+
+function createDestinationMarker() {
+  const group = new THREE.Group();
+  // 바깥 링 (펄스)
+  const outerRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.5, 0.7, 32),
+    new THREE.MeshBasicMaterial({ color: 0xf4b6c1, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+  );
+  outerRing.rotation.x = -Math.PI / 2;
+  group.add(outerRing);
+  // 안쪽 도넛
+  const innerRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.3, 0.42, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff7a9c, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+  );
+  innerRing.rotation.x = -Math.PI / 2;
+  innerRing.position.y = 0.01;
+  group.add(innerRing);
+  // 중앙 점
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.12, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, side: THREE.DoubleSide })
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.y = 0.02;
+  group.add(dot);
+  
+  group.visible = false;
+  group.userData = { outerRing, innerRing, dot };
+  return group;
+}
+
+function showDestinationMarker(x, z) {
+  if (!destinationMarker) {
+    destinationMarker = createDestinationMarker();
+    scene.add(destinationMarker);
+  }
+  destinationMarker.position.set(x, 0.03, z);
+  destinationMarker.visible = true;
+}
+
+function hideDestinationMarker() {
+  if (destinationMarker) destinationMarker.visible = false;
+}
+
+function updateDestinationMarker(dt) {
+  if (!destinationMarker || !destinationMarker.visible) return;
+  // 펄스 효과
+  const t = performance.now() * 0.003;
+  const pulse = 0.85 + Math.sin(t) * 0.15;
+  destinationMarker.userData.outerRing.scale.set(pulse, pulse, 1);
+  destinationMarker.userData.outerRing.material.opacity = 0.3 + Math.sin(t) * 0.3;
+  // 살짝 회전
+  destinationMarker.rotation.y += dt * 0.8;
+}
+
+// =========================================================
+// 유저 아바타 스폰/제거/이동
+// =========================================================
+function spawnUserMesh() {
+  if (state.user.mesh) return; // 이미 있음
+  const mesh = createUserMesh();
+  // 광장 중앙에서 시작
+  mesh.position.set(0, 0, 0);
+  mesh.userData = { type: 'user' };
+  scene.add(mesh);
+  state.user.mesh = mesh;
+  state.user.position = { x: 0, z: 0 };
+  state.user.targetPos = null;
+  state.user.moving = false;
+  
+  // 유저 이름표 (항상 보이는 말풍선)
+  const bubble = document.createElement('div');
+  bubble.className = 'speech-bubble';
+  bubble.style.borderColor = '#7ab8e8';
+  bubble.style.background = 'linear-gradient(135deg, #e8f4fc 0%, #d4e8f8 100%)';
+  bubble.textContent = '🧑 나';
+  document.getElementById('app').appendChild(bubble);
+  state.user.bubbleEl = bubble;
+}
+
+function moveUserTo(x, z, options = {}) {
+  // options.stopDistance: 목표로부터 이 거리만큼 떨어진 곳에 멈춤 (NPC 접근 시 사용)
+  // options.onArrive: 도착 시 실행할 콜백
+  // options.pendingNpcId: 이 NPC에게 접근 중이라는 표시
+  state.user.targetPos = { x, z, stopDistance: options.stopDistance || 0 };
+  state.user.moving = true;
+  state.user.onArrive = options.onArrive || null;
+  state.user.pendingNpcId = options.pendingNpcId || null;
+  showDestinationMarker(x, z);
+}
+
+function updateUser(dt) {
+  const u = state.user;
+  if (!u.mesh) return;
+  
+  // 이름표 위치 업데이트
+  if (u.bubbleEl) {
+    const vec = u.mesh.position.clone();
+    vec.y += 2.5;
+    vec.project(camera);
+    if (vec.z > 1 || vec.z < -1) {
+      u.bubbleEl.classList.add('hide');
+    } else {
+      u.bubbleEl.classList.remove('hide');
+      const sx = (vec.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-vec.y * 0.5 + 0.5) * window.innerHeight;
+      u.bubbleEl.style.left = sx + 'px';
+      u.bubbleEl.style.top = sy + 'px';
+    }
+  }
+  
+  if (!u.moving || !u.targetPos) {
+    u.mesh.position.y = 0;
+    return;
+  }
+  
+  // pendingNpcId가 있으면 타겟 좌표를 실시간으로 NPC 위치로 갱신 (움직이는 NPC 추적)
+  if (u.pendingNpcId) {
+    const npcMesh = npcMeshes[u.pendingNpcId]?.mesh;
+    if (npcMesh) {
+      u.targetPos.x = npcMesh.position.x;
+      u.targetPos.z = npcMesh.position.z;
+      showDestinationMarker(u.targetPos.x, u.targetPos.z);
+    }
+  }
+  
+  const dx = u.targetPos.x - u.mesh.position.x;
+  const dz = u.targetPos.z - u.mesh.position.z;
+  const distance = Math.hypot(dx, dz);
+  const stopDist = u.targetPos.stopDistance || 0.2;
+  
+  if (distance <= stopDist) {
+    // 도착
+    u.moving = false;
+    u.mesh.position.y = 0;
+    hideDestinationMarker();
+    const arrivedAt = { x: u.mesh.position.x, z: u.mesh.position.z };
+    u.position = arrivedAt;
+    const cb = u.onArrive;
+    const pendingId = u.pendingNpcId;
+    u.onArrive = null;
+    u.pendingNpcId = null;
+    u.targetPos = null;
+    if (cb) cb(pendingId);
+    return;
+  }
+  
+  // 이동
+  const dirX = dx / distance;
+  const dirZ = dz / distance;
+  u.mesh.position.x += dirX * u.speed * dt;
+  u.mesh.position.z += dirZ * u.speed * dt;
+  u.mesh.rotation.y = Math.atan2(dirX, dirZ);
+  // 걷기 바운스
+  u.bounce += dt * 8;
+  u.mesh.position.y = Math.abs(Math.sin(u.bounce)) * 0.06;
+  u.position.x = u.mesh.position.x;
+  u.position.z = u.mesh.position.z;
+}
+
+// NPC까지의 거리 계산 (유저 메시 기준)
+function distanceToNpc(npcId) {
+  const npcMesh = npcMeshes[npcId]?.mesh;
+  if (!npcMesh || !state.user.mesh) return Infinity;
+  const dx = npcMesh.position.x - state.user.mesh.position.x;
+  const dz = npcMesh.position.z - state.user.mesh.position.z;
+  return Math.hypot(dx, dz);
+}
+
+// 씬에 표시되는 NPC 3D 객체 관리
+const npcMeshes = {}; // id -> {mesh, target, state, speechBubbleEl, walkTimer}
+
+function getRandomLocation() {
+  // userOnly 장소(우리집)는 NPC 이동 대상에서 제외
+  const pool = LOCATIONS.filter(l => !l.userOnly);
+  const loc = pool[Math.floor(Math.random() * pool.length)];
+  return new THREE.Vector3(loc.x + (Math.random()-0.5)*1.5, 0, loc.z + (Math.random()-0.5)*1.5);
+}
+
+function getFavoriteLocation(npc) {
+  // 1. 이름 기반 특수 매핑 (우선순위 최상)
+  const name = (npc.name || '');
+  if (name === '루루') return LOCATIONS[2]; // 카페 (바리스타)
+  if (name === '차카') return LOCATIONS[1]; // 사진관
+  if (name === '야미') return LOCATIONS[0]; // 광장 (책은 서점에서 사지만 상주는 광장)
+  if (name === '밤톨') return LOCATIONS[4]; // 서점 (주인)
+  
+  // 2. 직업/꿈 텍스트 기반 매핑
+  const job = (npc.job || '').toLowerCase();
+  const dream = (npc.dream || '').toLowerCase();
+  const combined = job + ' ' + dream;
+  
+  // 사진/카메라 관련 → 사진관
+  if (combined.match(/사진|카메라|촬영|포토|야경/)) return LOCATIONS[1];
+  // 카페/커피/바리스타 → 카페
+  if (combined.match(/카페|커피|바리스타|음료|티|차/)) return LOCATIONS[2];
+  // 꽃/플로리스트/정원 → 꽃가게
+  if (combined.match(/꽃|플로리|정원|원예/)) return LOCATIONS[3];
+  // 책/작가/서점/문학 → 서점
+  if (combined.match(/책|작가|서점|시인|시|문학|독서|소설|편집/)) return LOCATIONS[4];
+  // 예술/음악/낚시/명상 → 연못
+  if (combined.match(/낚시|예술|음악|명상|자연/)) return LOCATIONS[5];
+  
+  // 3. 종족 기반 폴백
+  const species = npc.species;
+  if (species === '거북이') return LOCATIONS[5]; // 연못
+  if (species === '토끼') return LOCATIONS[3]; // 꽃가게
+  if (species === '부엉이') return LOCATIONS[4]; // 서점
+  if (species === '앵무새') return LOCATIONS[0]; // 광장 (수다쟁이)
+  if (species === '고양이') return LOCATIONS[2]; // 카페
+  if (species === '너구리') return LOCATIONS[1]; // 사진관
+  if (species === '다람쥐') return LOCATIONS[4]; // 서점
+  
+  // 4. 최종 폴백: 랜덤 (단, 우리집 제외)
+  const pool = LOCATIONS.filter(l => !l.userOnly);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function spawnNpcMesh(npc) {
+  const animal = ANIMALS.find(a => a.species === npc.species);
+  const mesh = createNpcMesh(animal);
+  // 초기 스폰 위치는 자기 favorite 장소 근처에서 시작
+  const fav = getFavoriteLocation(npc);
+  const startX = fav.x + (Math.random() - 0.5) * 2.5;
+  const startZ = fav.z + (Math.random() - 0.5) * 2.5;
+  mesh.position.set(startX, 0, startZ);
+  mesh.userData = { type: 'npc', npcId: npc.id };
+  scene.add(mesh);
+  
+  // 이름 말풍선 DOM (항상 표시)
+  const bubble = document.createElement('div');
+  bubble.className = 'speech-bubble' + (npc.isStory ? ' story' : '');
+  bubble.textContent = `${animal.emoji} ${npc.name}`;
+  document.getElementById('app').appendChild(bubble);
+  
+  npcMeshes[npc.id] = {
+    mesh,
+    target: getFavoriteLocation(npc),
+    targetPos: null,
+    state: 'walking',
+    speechBubbleEl: bubble,
+    walkTimer: 0,
+    idleTimer: 0,
+    bounce: 0,
+    chatMessage: null,
+    chatTimer: 0,
+  };
+  const t = npcMeshes[npc.id].target;
+  npcMeshes[npc.id].targetPos = new THREE.Vector3(t.x + (Math.random()-0.5)*1.5, 0, t.z + (Math.random()-0.5)*1.5);
+}
+
+function removeNpcMesh(npcId) {
+  if (npcMeshes[npcId]) {
+    scene.remove(npcMeshes[npcId].mesh);
+    npcMeshes[npcId].speechBubbleEl.remove();
+    delete npcMeshes[npcId];
+  }
+}
+
+// =========================================================
+// 인테리어 씬 (건물 내부)
+// =========================================================
+const interiorScene = new THREE.Scene();
+interiorScene.fog = new THREE.Fog(0xfef3e7, 15, 40);
+
+const interiorAmbient = new THREE.AmbientLight(0xffffff, 0.7);
+interiorScene.add(interiorAmbient);
+const interiorLight = new THREE.DirectionalLight(0xffffff, 0.6);
+interiorLight.position.set(3, 8, 3);
+interiorLight.castShadow = true;
+interiorLight.shadow.mapSize.width = 1024;
+interiorLight.shadow.mapSize.height = 1024;
+interiorScene.add(interiorLight);
+const interiorPoint = new THREE.PointLight(0xfff0cc, 0.6, 20);
+interiorPoint.position.set(0, 5, 0);
+interiorScene.add(interiorPoint);
+
+function updateInteriorLighting() {
+  const t = state.timeOfDay;
+  let ambientIntensity, dirIntensity, pointIntensity, lightTint;
+  
+  if (t < 0.2 || t > 0.85) {
+    // 밤: 전등(point)이 주요 광원
+    ambientIntensity = 0.25;
+    dirIntensity = 0.15;
+    pointIntensity = 1.2;
+    lightTint = new THREE.Color(0xffd580);
+  } else if (t < 0.3) {
+    // 아침: 은은한 빛
+    ambientIntensity = 0.5;
+    dirIntensity = 0.4;
+    pointIntensity = 0.4;
+    lightTint = new THREE.Color(0xffcba4);
+  } else if (t < 0.65) {
+    // 낮: 창으로 햇빛 들어옴
+    ambientIntensity = 0.6;
+    dirIntensity = 0.7;
+    pointIntensity = 0.2;
+    lightTint = new THREE.Color(0xffffff);
+  } else {
+    // 저녁: 따뜻한 색조
+    ambientIntensity = 0.4;
+    dirIntensity = 0.35;
+    pointIntensity = 0.7;
+    lightTint = new THREE.Color(0xffa76b);
+  }
+  
+  interiorAmbient.intensity = ambientIntensity;
+  interiorLight.intensity = dirIntensity;
+  interiorLight.color = lightTint;
+  interiorPoint.intensity = pointIntensity;
+  
+  // 실내 배경색도 시간대에 맞추기 (창밖 느낌)
+  let bgColor;
+  if (t < 0.2 || t > 0.85) bgColor = new THREE.Color(0x2a3a5c);
+  else if (t < 0.3) bgColor = new THREE.Color(0xfdd9b4);
+  else if (t < 0.65) bgColor = new THREE.Color(0xfef3e7);
+  else bgColor = new THREE.Color(0xffb085);
+  renderer.setClearColor(bgColor);
+  interiorScene.fog.color = bgColor;
+}
+
+const interiorObjects = new THREE.Group();
+interiorScene.add(interiorObjects);
+
+// 현재 인테리어에 있는 NPC 메시들
+const interiorNpcMeshes = {}; // id -> {mesh, bubble, target, state, idleTimer, bounce}
+
+function makeFloor(color) {
+  const floorGeo = new THREE.PlaneGeometry(12, 12);
+  const floor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({ color }));
+  floor.rotation.x = -Math.PI/2;
+  floor.receiveShadow = true;
+  return floor;
+}
+function makeWall(width, height, color, position, rotationY = 0) {
+  const geo = new THREE.PlaneGeometry(width, height);
+  const wall = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide }));
+  wall.position.copy(position);
+  wall.rotation.y = rotationY;
+  wall.receiveShadow = true;
+  return wall;
+}
+function makeBox(w, h, d, color, x, y, z, castShadow = true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color }));
+  m.position.set(x, y, z);
+  m.castShadow = castShadow;
+  m.receiveShadow = true;
+  return m;
+}
+
+function buildInterior(type) {
+  // 기존 오브젝트 제거
+  while (interiorObjects.children.length) interiorObjects.remove(interiorObjects.children[0]);
+  
+  // 공통 바닥
+  const floorColors = {
+    photostudio: 0x4a3a52,
+    cafe: 0xc9a57a,
+    flower: 0xd4e8d0,
+    bookstore: 0xb8956d,
+    home: 0xc89978, // 따뜻한 나무 바닥
+  };
+  interiorObjects.add(makeFloor(floorColors[type] || 0xe8dcc0));
+  
+  // 공통 벽
+  const wallColor = {
+    photostudio: 0x2a2530,
+    cafe: 0xf0d8c4,
+    flower: 0xfde8ec,
+    bookstore: 0xe8dcc4,
+    home: 0xf8ebd4, // 부드러운 크림색
+  }[type] || 0xfef3e7;
+  interiorObjects.add(makeWall(12, 6, wallColor, new THREE.Vector3(0, 3, -6)));
+  interiorObjects.add(makeWall(12, 6, wallColor, new THREE.Vector3(-6, 3, 0), Math.PI/2));
+  interiorObjects.add(makeWall(12, 6, wallColor, new THREE.Vector3(6, 3, 0), Math.PI/2));
+  
+  // 천장
+  const ceilColor = type === 'photostudio' ? 0x1a1820 : 0xf5e6d0;
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ color: ceilColor, side: THREE.DoubleSide }));
+  ceil.rotation.x = Math.PI/2;
+  ceil.position.y = 6;
+  interiorObjects.add(ceil);
+  
+  if (type === 'home') {
+    // ============ 유저의 집 (원룸 스튜디오) ============
+    // 공간 배치 개요 (위에서 본 것):
+    //   뒷벽(-6z) -------------------
+    //   [책장]   [창문]    [옷장]
+    //                
+    //   [책상/의자]        [침대]
+    //                
+    //           [러그]
+    //       [소파] [TV]
+    //   앞벽(+6z) -------------------
+    //
+    // 1) 러그 (중앙 바닥) — 다른 가구 배치 전에 깔아야 위에 겹쳐 보임
+    const rug = new THREE.Mesh(
+      new THREE.CircleGeometry(3.2, 32),
+      new THREE.MeshStandardMaterial({ color: 0xd4a5a5 })
+    );
+    rug.rotation.x = -Math.PI/2;
+    rug.position.set(0, 0.02, 1);
+    interiorObjects.add(rug);
+    // 러그 안쪽 원 (장식)
+    const rugInner = new THREE.Mesh(
+      new THREE.CircleGeometry(2.2, 32),
+      new THREE.MeshStandardMaterial({ color: 0xe8c0c0 })
+    );
+    rugInner.rotation.x = -Math.PI/2;
+    rugInner.position.set(0, 0.03, 1);
+    interiorObjects.add(rugInner);
+    
+    // 2) 침대 (우측, 뒷벽 쪽) — 클릭 가능하게 userData 부여
+    const bedGroup = new THREE.Group();
+    // 침대 매트리스 (흰 시트)
+    const mattress = makeBox(2.4, 0.5, 1.5, 0xfafafa, 0, 0.4, 0);
+    bedGroup.add(mattress);
+    // 침대 프레임 (나무)
+    const bedFrame = makeBox(2.6, 0.35, 1.7, 0x8b5a3c, 0, 0.18, 0);
+    bedGroup.add(bedFrame);
+    // 헤드보드 (침대 머리 쪽, 뒷벽 방향)
+    const headboard = makeBox(2.6, 1.2, 0.15, 0x6b4423, 0, 0.85, -0.77);
+    bedGroup.add(headboard);
+    // 이불 (파스텔 블루)
+    const blanket = makeBox(2.3, 0.1, 1.0, 0x9ec5eb, 0, 0.68, 0.25);
+    bedGroup.add(blanket);
+    // 베개 (2개)
+    const pillow1 = makeBox(0.7, 0.2, 0.5, 0xffe4ec, -0.6, 0.76, -0.45);
+    bedGroup.add(pillow1);
+    const pillow2 = makeBox(0.7, 0.2, 0.5, 0xffd6d6, 0.55, 0.76, -0.45);
+    bedGroup.add(pillow2);
+    // 침대 그룹 위치 + userData (클릭 상호작용용)
+    bedGroup.position.set(3.4, 0, -3);
+    bedGroup.rotation.y = Math.PI / 2; // 침대 머리가 벽을 향하도록
+    bedGroup.userData = { type: 'bed', name: '침대' };
+    // 침대 내부 모든 메시에도 같은 userData 심어서 raycast 시 잡히게
+    bedGroup.traverse(obj => {
+      if (obj.isMesh) obj.userData.bedRef = bedGroup;
+    });
+    interiorObjects.add(bedGroup);
+    
+    // 침대 옆 작은 협탁 + 램프
+    const nightstand = makeBox(0.7, 0.7, 0.7, 0x8b5a3c, 3.4, 0.35, -0.8);
+    interiorObjects.add(nightstand);
+    // 램프 받침
+    const lampBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.18, 0.3, 12),
+      new THREE.MeshStandardMaterial({ color: 0x3a2a1a })
+    );
+    lampBase.position.set(3.4, 0.85, -0.8);
+    interiorObjects.add(lampBase);
+    // 램프 갓 (노란 빛)
+    const lampShade = new THREE.Mesh(
+      new THREE.ConeGeometry(0.35, 0.4, 12),
+      new THREE.MeshStandardMaterial({ color: 0xfff0b3, emissive: 0x665530 })
+    );
+    lampShade.position.set(3.4, 1.2, -0.8);
+    interiorObjects.add(lampShade);
+    
+    // 3) 책상 + 의자 (좌측, 뒷벽 쪽)
+    const desk = makeBox(2.0, 0.1, 1.0, 0xa47c5a, -3.2, 1.05, -5.0);
+    interiorObjects.add(desk);
+    // 책상 다리 4개
+    for (const [dx, dz] of [[-0.9, -0.45], [0.9, -0.45], [-0.9, 0.45], [0.9, 0.45]]) {
+      const leg = makeBox(0.1, 1.0, 0.1, 0x7a5a3a, -3.2 + dx, 0.5, -5.0 + dz);
+      interiorObjects.add(leg);
+    }
+    // 책상 위 노트북 (닫힘)
+    const laptop = makeBox(0.7, 0.05, 0.5, 0x3a3a3a, -3.0, 1.13, -5.1);
+    interiorObjects.add(laptop);
+    // 책상 위 책 더미 (3권)
+    for (let i = 0; i < 3; i++) {
+      const bookColors = [0xc75a5a, 0x5a7ac7, 0xd4a93a];
+      const book = makeBox(0.45, 0.08, 0.3, bookColors[i], -3.8, 1.14 + i * 0.085, -5.2);
+      interiorObjects.add(book);
+    }
+    // 책상 위 머그컵 (작은 원통)
+    const mug = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.1, 0.2, 16),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    mug.position.set(-2.4, 1.2, -5.1);
+    interiorObjects.add(mug);
+    // 의자 (책상 앞)
+    const chairSeat = makeBox(0.7, 0.08, 0.7, 0x8b5a3c, -3.2, 0.5, -4.2);
+    interiorObjects.add(chairSeat);
+    const chairBack = makeBox(0.7, 0.9, 0.08, 0x8b5a3c, -3.2, 0.95, -4.55);
+    interiorObjects.add(chairBack);
+    for (const [dx, dz] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) {
+      const leg = makeBox(0.06, 0.5, 0.06, 0x6b4423, -3.2 + dx, 0.25, -4.2 + dz);
+      interiorObjects.add(leg);
+    }
+    
+    // 4) 책장 (좌측 벽에 붙임)
+    const bookshelf = makeBox(0.5, 3.0, 2.2, 0x6b4423, -5.5, 1.5, -3);
+    interiorObjects.add(bookshelf);
+    // 책장 선반 (3줄)
+    for (let i = 0; i < 3; i++) {
+      const shelfY = 0.5 + i * 0.9;
+      // 선반마다 책 여러 권
+      for (let j = 0; j < 7; j++) {
+        const bookColors = [0xc75a5a, 0x5a7ac7, 0xd4a93a, 0x7ac75a, 0xc75aa7, 0x5ac7a7, 0xa75ac7];
+        const h = 0.55 + Math.random() * 0.2;
+        const book = makeBox(0.15, h, 0.35, bookColors[j % bookColors.length], -5.25, shelfY + h/2 - 0.1, -3.9 + j * 0.26);
+        interiorObjects.add(book);
+      }
+    }
+    
+    // 5) 옷장 (우측 벽에 붙임, 침대와 분리)
+    const wardrobe = makeBox(0.6, 3.0, 2.0, 0x8b5a3c, 5.6, 1.5, 4);
+    interiorObjects.add(wardrobe);
+    // 옷장 문손잡이 2개
+    for (const y of [1.3, 1.7]) {
+      const handle = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xd4af37 })
+      );
+      handle.position.set(5.28, y, 3.5);
+      interiorObjects.add(handle);
+    }
+    // 옷장 문 분할선 (세로선 — 얇은 박스로 표현)
+    const wardrobeSplit = makeBox(0.02, 2.8, 0.05, 0x3a2a1a, 5.28, 1.5, 4);
+    interiorObjects.add(wardrobeSplit);
+    
+    // 6) 소파 (중앙 앞쪽)
+    const sofaSeat = makeBox(3.2, 0.5, 1.2, 0x9ab6d4, 0, 0.5, 3.8);
+    interiorObjects.add(sofaSeat);
+    const sofaBack = makeBox(3.2, 1.0, 0.3, 0x8aa6c4, 0, 1.0, 4.4);
+    interiorObjects.add(sofaBack);
+    // 소파 팔걸이 (양쪽)
+    const sofaArmL = makeBox(0.3, 0.7, 1.2, 0x8aa6c4, -1.6, 0.85, 3.8);
+    interiorObjects.add(sofaArmL);
+    const sofaArmR = makeBox(0.3, 0.7, 1.2, 0x8aa6c4, 1.6, 0.85, 3.8);
+    interiorObjects.add(sofaArmR);
+    // 쿠션 3개
+    for (let i = 0; i < 3; i++) {
+      const cushionColors = [0xffd6d6, 0xffe4a5, 0xd6e4ff];
+      const cushion = makeBox(0.7, 0.2, 0.6, cushionColors[i], -1.0 + i * 1.0, 0.8, 3.7);
+      interiorObjects.add(cushion);
+    }
+    
+    // 7) 작은 티테이블 (소파 앞)
+    const teaTable = makeBox(1.2, 0.5, 0.7, 0x6b4423, 0, 0.25, 2.3);
+    interiorObjects.add(teaTable);
+    // 티테이블 위 찻잔 (작은 원통)
+    const teacup = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.08, 0.15, 12),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    teacup.position.set(-0.3, 0.58, 2.3);
+    interiorObjects.add(teacup);
+    // 티테이블 위 잡지/책
+    const mag = makeBox(0.5, 0.04, 0.35, 0xc75aa7, 0.2, 0.52, 2.3);
+    interiorObjects.add(mag);
+    
+    // 8) 창문 (뒷벽 중앙, 책상과 옷장 사이)
+    const homeWindowFrame = makeBox(2.0, 1.5, 0.1, 0xffffff, 0, 3, -5.95);
+    interiorObjects.add(homeWindowFrame);
+    const homeWindow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.7, 1.2),
+      new THREE.MeshStandardMaterial({ color: 0xa8d0dc, emissive: 0x1a2530 })
+    );
+    homeWindow.position.set(0, 3, -5.89);
+    interiorObjects.add(homeWindow);
+    // 창문 십자 프레임
+    const winCrossV = makeBox(0.05, 1.2, 0.02, 0xffffff, 0, 3, -5.88);
+    interiorObjects.add(winCrossV);
+    const winCrossH = makeBox(1.7, 0.05, 0.02, 0xffffff, 0, 3, -5.88);
+    interiorObjects.add(winCrossH);
+    
+    // 9) 벽 장식 — 액자 2개 (소파 위쪽 벽... 실제로는 소파 뒤가 벽이 아니므로 책장 옆 빈 벽에)
+    // 뒷벽 왼쪽 (책장과 창문 사이)에 작은 액자
+    const pic1 = makeBox(0.8, 0.6, 0.05, 0xfafafa, -2.5, 4, -5.95);
+    interiorObjects.add(pic1);
+    const picArt1 = makeBox(0.6, 0.45, 0.03, 0xfad4a5, -2.5, 4, -5.93);
+    interiorObjects.add(picArt1);
+    // 뒷벽 오른쪽 (창문과 옷장 사이)
+    const pic2 = makeBox(0.7, 0.7, 0.05, 0xfafafa, 2.8, 4, -5.95);
+    interiorObjects.add(pic2);
+    const picArt2 = makeBox(0.55, 0.55, 0.03, 0xa5d4fa, 2.8, 4, -5.93);
+    interiorObjects.add(picArt2);
+    
+    // 10) 식물 화분 (창문 옆 바닥)
+    const potBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3, 0.25, 0.5, 12),
+      new THREE.MeshStandardMaterial({ color: 0xc75a5a })
+    );
+    potBase.position.set(-1.8, 0.25, -5.3);
+    interiorObjects.add(potBase);
+    // 잎사귀 (녹색 구)
+    const leaves = new THREE.Mesh(
+      new THREE.SphereGeometry(0.45, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0x6bb585 })
+    );
+    leaves.position.set(-1.8, 0.85, -5.3);
+    interiorObjects.add(leaves);
+    // 잎사귀 2 (위쪽 더 작은 구)
+    const leaves2 = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0x7ac59a })
+    );
+    leaves2.position.set(-1.8, 1.2, -5.2);
+    interiorObjects.add(leaves2);
+  }
+  else if (type === 'photostudio') {
+    // 사진 전시 벽 (뒷벽)
+    const photoColors = [0xfff0cc, 0xffd6cc, 0xd4a5f5, 0xfad4d8, 0xc9dcf5, 0xa8dcc3, 0xffc896, 0xe8dcc4];
+    // 2행 5열 사진 프레임
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 5; col++) {
+        // 프레임 (흰색)
+        const frame = makeBox(1.4, 1.1, 0.08, 0xfafafa, -4.4 + col * 2.2, 1.5 + row * 1.8, -5.9);
+        interiorObjects.add(frame);
+        // 사진 내용 (색 샘플)
+        const photo = makeBox(1.2, 0.9, 0.05, photoColors[(row * 5 + col) % photoColors.length], -4.4 + col * 2.2, 1.5 + row * 1.8, -5.85);
+        interiorObjects.add(photo);
+      }
+    }
+    // 삼각대 + 카메라 (좌측)
+    const tripodMat = 0x2a2a2a;
+    for (let i = 0; i < 3; i++) {
+      const leg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.03, 2.2, 6),
+        new THREE.MeshStandardMaterial({ color: tripodMat })
+      );
+      const ang = (i / 3) * Math.PI * 2;
+      leg.position.set(-4 + Math.cos(ang) * 0.25, 1.1, 2 + Math.sin(ang) * 0.25);
+      leg.rotation.z = Math.cos(ang) * 0.15;
+      leg.rotation.x = Math.sin(ang) * 0.15;
+      leg.castShadow = true;
+      interiorObjects.add(leg);
+    }
+    // 카메라 본체
+    const cam = makeBox(0.8, 0.55, 0.5, 0x1a1a1a, -4, 2.3, 2);
+    interiorObjects.add(cam);
+    // 렌즈
+    const lens = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.28, 0.5, 16),
+      new THREE.MeshStandardMaterial({ color: 0x333333 })
+    );
+    lens.position.set(-4, 2.3, 2.5);
+    lens.rotation.x = Math.PI / 2;
+    lens.castShadow = true;
+    interiorObjects.add(lens);
+    const lensInner = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.17, 0.17, 0.08, 16),
+      new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x224466, emissiveIntensity: 0.3 })
+    );
+    lensInner.position.set(-4, 2.3, 2.78);
+    lensInner.rotation.x = Math.PI / 2;
+    interiorObjects.add(lensInner);
+    
+    // 조명 우산 (우측)
+    const umbrellaStand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 2.8, 6),
+      new THREE.MeshStandardMaterial({ color: 0x555555 })
+    );
+    umbrellaStand.position.set(3.5, 1.4, 2);
+    umbrellaStand.castShadow = true;
+    interiorObjects.add(umbrellaStand);
+    const umbrella = new THREE.Mesh(
+      new THREE.SphereGeometry(0.9, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0xfff5e0, side: THREE.DoubleSide, emissive: 0xfff0cc, emissiveIntensity: 0.3 })
+    );
+    umbrella.position.set(3.5, 2.8, 2);
+    umbrella.rotation.x = Math.PI;
+    interiorObjects.add(umbrella);
+    
+    // 카운터/작업대 (중앙)
+    const counter = makeBox(2.5, 1, 1.2, 0x6b4c52, 0, 0.5, 0);
+    interiorObjects.add(counter);
+    const counterTop = makeBox(2.5, 0.08, 1.2, 0x8b6a72, 0, 1.04, 0);
+    interiorObjects.add(counterTop);
+    // 사진 앨범 / 노트북
+    const laptop = makeBox(0.8, 0.04, 0.6, 0x888888, 0, 1.1, 0);
+    interiorObjects.add(laptop);
+    const screen = makeBox(0.75, 0.5, 0.03, 0x1a1a2a, 0, 1.35, -0.28);
+    screen.rotation.x = -0.2;
+    interiorObjects.add(screen);
+    const screenOn = makeBox(0.7, 0.45, 0.02, 0x4466aa, 0, 1.35, -0.26);
+    screenOn.rotation.x = -0.2;
+    interiorObjects.add(screenOn);
+    
+    // 바닥에 작은 소품 (필름 박스 같은 것)
+    interiorObjects.add(makeBox(0.3, 0.2, 0.3, 0xc44536, -2, 0.1, 4));
+    interiorObjects.add(makeBox(0.3, 0.2, 0.3, 0xfff0cc, 2, 0.1, 4));
+  }
+  else if (type === 'cafe') {
+    // 바 카운터
+    const bar = makeBox(7, 1.1, 1, 0x8b5a2b, 0, 0.55, -4.5);
+    interiorObjects.add(bar);
+    const barTop = makeBox(7, 0.1, 1.2, 0xd4a574, 0, 1.15, -4.5);
+    interiorObjects.add(barTop);
+    // 에스프레소 머신
+    const machine = makeBox(1.2, 0.9, 0.8, 0xc0c0c0, -2, 1.65, -4.5);
+    interiorObjects.add(machine);
+    const machineDisplay = makeBox(0.4, 0.3, 0.05, 0x222222, -2, 1.75, -4.05);
+    interiorObjects.add(machineDisplay);
+    // 컵 몇 개
+    for (let i = 0; i < 4; i++) {
+      const cup = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.13, 0.1, 0.25, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffffff })
+      );
+      cup.position.set(0 + i * 0.4, 1.32, -4.3);
+      cup.castShadow = true;
+      interiorObjects.add(cup);
+      // 커피 색
+      const coffee = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 0.02, 16),
+        new THREE.MeshStandardMaterial({ color: 0x4a2817 })
+      );
+      coffee.position.set(0 + i * 0.4, 1.44, -4.3);
+      interiorObjects.add(coffee);
+    }
+    // 라운드 테이블 2개
+    for (const [tx, tz] of [[-2, 2], [2.5, 2]]) {
+      const top = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.9, 0.9, 0.12, 24),
+        new THREE.MeshStandardMaterial({ color: 0xd4a574 })
+      );
+      top.position.set(tx, 1, tz);
+      top.castShadow = true;
+      interiorObjects.add(top);
+      const pillar = makeBox(0.2, 1, 0.2, 0x6b4423, tx, 0.5, tz);
+      interiorObjects.add(pillar);
+      // 의자
+      for (const [cx, cz] of [[-1.3, 0], [1.3, 0]]) {
+        interiorObjects.add(makeBox(0.7, 0.15, 0.7, 0xd4a5f5, tx + cx, 0.5, tz + cz));
+      }
+    }
+    // 메뉴 보드
+    const board = makeBox(2, 1.2, 0.05, 0x6b4423, 3, 3, -5.95);
+    interiorObjects.add(board);
+    const boardInner = makeBox(1.8, 1, 0.02, 0x333333, 3, 3, -5.92);
+    interiorObjects.add(boardInner);
+  }
+  else if (type === 'flower') {
+    // 꽃 진열대 여러 개
+    const flowerColorSets = [
+      [0xff9ebb, 0xffb8d0], [0xffd580, 0xffe4a8], [0xc9b2f5, 0xdcc8ff],
+      [0xfad4d8, 0xffe4e8], [0xa8dcc3, 0xc8ecd3],
+    ];
+    const stands = [[-4, -4.5], [-1.5, -4.5], [1.5, -4.5], [4, -4.5], [-4, 3], [4, 3]];
+    stands.forEach(([sx, sz], idx) => {
+      // 나무 박스
+      interiorObjects.add(makeBox(1.4, 0.8, 1.4, 0x8b5a2b, sx, 0.4, sz));
+      // 화분의 꽃들
+      const colors = flowerColorSets[idx % flowerColorSets.length];
+      for (let i = 0; i < 5; i++) {
+        const flower = new THREE.Mesh(
+          new THREE.SphereGeometry(0.18, 8, 8),
+          new THREE.MeshStandardMaterial({ color: colors[i % 2] })
+        );
+        flower.position.set(
+          sx + (Math.random() - 0.5) * 0.8,
+          1.1 + Math.random() * 0.3,
+          sz + (Math.random() - 0.5) * 0.8
+        );
+        flower.castShadow = true;
+        interiorObjects.add(flower);
+        // 줄기
+        const stem = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.03, 0.03, 0.4, 6),
+          new THREE.MeshStandardMaterial({ color: 0x6bb585 })
+        );
+        stem.position.set(flower.position.x, flower.position.y - 0.25, flower.position.z);
+        interiorObjects.add(stem);
+      }
+    });
+    // 중앙 카운터
+    const counter = makeBox(2.5, 1, 1.2, 0xdcc8ff, 0, 0.5, 1);
+    interiorObjects.add(counter);
+    // 리본과 바구니
+    const basket = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.4, 0.3, 0.3, 12),
+      new THREE.MeshStandardMaterial({ color: 0xc9a57a })
+    );
+    basket.position.set(0, 1.15, 1);
+    basket.castShadow = true;
+    interiorObjects.add(basket);
+  }
+  else if (type === 'bookstore') {
+    // 큰 책장들 (벽을 따라)
+    const bookColors = [0xc44536, 0x6b4c93, 0x2d6a4f, 0xf4a261, 0x457b9d, 0xe63946, 0xffd166, 0x457b9d];
+    // 뒷벽 책장
+    const backShelf = makeBox(10, 5, 0.5, 0x8b5a2b, 0, 2.5, -5.7);
+    interiorObjects.add(backShelf);
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 14; col++) {
+        const book = makeBox(0.25 + Math.random() * 0.1, 0.6 + Math.random() * 0.2, 0.2, bookColors[(row + col) % bookColors.length], -4.5 + col * 0.7, 0.5 + row * 1.2, -5.45);
+        interiorObjects.add(book);
+      }
+    }
+    // 좌측 책장
+    const leftShelf = makeBox(0.5, 5, 10, 0x8b5a2b, -5.7, 2.5, 0);
+    interiorObjects.add(leftShelf);
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 14; col++) {
+        const book = makeBox(0.2, 0.6 + Math.random() * 0.2, 0.25 + Math.random() * 0.1, bookColors[(row * 2 + col) % bookColors.length], -5.45, 0.5 + row * 1.2, -4.5 + col * 0.7);
+        interiorObjects.add(book);
+      }
+    }
+    // 중앙 테이블 (읽는 곳)
+    const tableTop = makeBox(3, 0.15, 1.8, 0xc9a57a, 1, 1, 1);
+    interiorObjects.add(tableTop);
+    for (const [lx, lz] of [[-1.2, -0.7],[1.2, -0.7],[-1.2, 0.7],[1.2, 0.7]]) {
+      interiorObjects.add(makeBox(0.15, 1, 0.15, 0x8b5a2b, 1+lx, 0.5, 1+lz));
+    }
+    // 의자
+    interiorObjects.add(makeBox(0.7, 0.15, 0.7, 0xc9dcf5, -0.5, 0.5, 1));
+    interiorObjects.add(makeBox(0.7, 0.15, 0.7, 0xc9dcf5, 2.5, 0.5, 1));
+    // 책 몇 권 테이블 위
+    interiorObjects.add(makeBox(0.6, 0.1, 0.4, 0xc44536, 0.5, 1.12, 1));
+    interiorObjects.add(makeBox(0.55, 0.08, 0.4, 0x2d6a4f, 1.7, 1.11, 1.2));
+  }
+  
+  // 공통: 문 (뒤쪽 벽 중앙에 표시)
+  const doorFrame = makeBox(1.5, 2.5, 0.1, 0x8b5a2b, 4.5, 1.25, -5.9);
+  interiorObjects.add(doorFrame);
+  const doorPanel = makeBox(1.2, 2.2, 0.05, 0xc44536, 4.5, 1.1, -5.85);
+  interiorObjects.add(doorPanel);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffd700 }));
+  knob.position.set(5, 1.1, -5.82);
+  interiorObjects.add(knob);
+}
+
+function enterInterior(loc) {
+  if (!loc.interior) {
+    showNotification(`${loc.emoji} ${loc.name}은(는) 들어갈 수 없어요`);
+    return;
+  }
+  state.viewMode = 'interior';
+  state.currentInterior = loc;
+  buildInterior(loc.interior);
+  
+  // 인테리어 입장 시 이 장소 선호 NPC들 추가 (유저 집은 제외)
+  if (!loc.userOnly) {
+    spawnInteriorNpcs(loc);
+  }
+  
+  // UI 업데이트
+  document.getElementById('exit-interior').classList.add('show');
+  const titleEl = document.getElementById('interior-title');
+  document.getElementById('interior-emoji').textContent = loc.emoji;
+  document.getElementById('interior-name').textContent = loc.name;
+  titleEl.classList.add('show');
+  document.getElementById('hint').style.display = 'none';
+  
+  // 외부 말풍선 숨기기
+  Object.values(npcMeshes).forEach(n => n.speechBubbleEl.classList.add('hide'));
+  
+  // 카메라 인테리어용 위치
+  cameraAngle = 0;
+  cameraPitch = Math.PI / 3;
+  cameraDist = 12;
+  cameraTarget.set(0, 1, 0);
+  updateCamera();
+}
+
+function exitInterior() {
+  state.viewMode = 'village';
+  state.currentInterior = null;
+  // 인테리어 NPC 제거
+  Object.keys(interiorNpcMeshes).forEach(id => {
+    const n = interiorNpcMeshes[id];
+    interiorScene.remove(n.mesh);
+    n.speechBubbleEl.remove();
+    delete interiorNpcMeshes[id];
+  });
+  document.getElementById('exit-interior').classList.remove('show');
+  document.getElementById('interior-title').classList.remove('show');
+  document.getElementById('hint').style.display = 'block';
+  // 카메라 복원
+  cameraAngle = Math.PI / 4;
+  cameraPitch = Math.PI / 3.5;
+  cameraDist = 30;
+  cameraTarget.set(0, 0, 0);
+  updateCamera();
+}
+
+function spawnInteriorNpcs(loc) {
+  // 이 장소를 선호하는 NPC 찾기
+  const matchingNpcs = state.npcs.filter(npc => {
+    const fav = getFavoriteLocation(npc);
+    return fav.name === loc.name;
+  });
+  // 없으면 랜덤 NPC 1-2명
+  let npcsToShow = matchingNpcs;
+  if (npcsToShow.length === 0 && state.npcs.length > 0) {
+    // 확률적으로 1명 보여주기
+    if (Math.random() < 0.5) {
+      npcsToShow = [state.npcs[Math.floor(Math.random() * state.npcs.length)]];
+    }
+  }
+  npcsToShow = npcsToShow.slice(0, 3); // 최대 3명
+  
+  npcsToShow.forEach((npc, idx) => {
+    const animal = ANIMALS.find(a => a.species === npc.species);
+    const mesh = createNpcMesh(animal);
+    // 실내 위치 배치
+    const positions = [
+      [0, 0, 2], [2, 0, 2], [-2, 0, 2], [0, 0, -2], [3, 0, 0],
+    ];
+    const pos = positions[idx % positions.length];
+    mesh.position.set(pos[0], 0, pos[2]);
+    mesh.userData = { type: 'npc', npcId: npc.id };
+    interiorScene.add(mesh);
+    
+    const bubble = document.createElement('div');
+    bubble.className = 'speech-bubble';
+    bubble.textContent = `${animal.emoji} ${npc.name}`;
+    document.getElementById('app').appendChild(bubble);
+    
+    interiorNpcMeshes[npc.id] = {
+      mesh, speechBubbleEl: bubble,
+      targetPos: new THREE.Vector3(pos[0], 0, pos[2]),
+      state: 'idle', idleTimer: 2 + Math.random() * 3,
+      bounce: 0, showNameTimer: 3,
+    };
+  });
+}
+
+function updateInteriorNpcs(dt) {
+  Object.entries(interiorNpcMeshes).forEach(([id, n]) => {
+    const npc = state.npcs.find(x => x.id == id);
+    if (!npc) return;
+    n.showNameTimer -= dt;
+    
+    if (n.state === 'walking' && n.targetPos) {
+      const dir = new THREE.Vector3().subVectors(n.targetPos, n.mesh.position);
+      dir.y = 0;
+      const distance = dir.length();
+      if (distance < 0.3) {
+        n.state = 'idle';
+        n.idleTimer = 2 + Math.random() * 3;
+      } else {
+        dir.normalize();
+        n.mesh.position.x += dir.x * 1.3 * dt;
+        n.mesh.position.z += dir.z * 1.3 * dt;
+        n.mesh.rotation.y = Math.atan2(dir.x, dir.z);
+        n.bounce += dt * 10;
+        n.mesh.position.y = Math.abs(Math.sin(n.bounce)) * 0.06;
+      }
+    } else if (n.state === 'idle') {
+      n.mesh.position.y = 0;
+      n.idleTimer -= dt;
+      // 가끔 돌아보기
+      n.mesh.rotation.y += Math.sin(performance.now() * 0.001) * 0.002;
+      if (n.idleTimer <= 0) {
+        // 실내 안에서 새 목표
+        const positions = [[0, 0, 2], [2, 0, 2], [-2, 0, 2], [0, 0, -2], [3, 0, 1], [-3, 0, 1]];
+        const pick = positions[Math.floor(Math.random() * positions.length)];
+        n.targetPos = new THREE.Vector3(pick[0] + (Math.random()-0.5)*0.5, 0, pick[2] + (Math.random()-0.5)*0.5);
+        n.state = 'walking';
+      }
+    }
+    
+    // 말풍선 위치
+    const vec = n.mesh.position.clone();
+    vec.y += 2;
+    vec.project(camera);
+    const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
+    n.speechBubbleEl.style.left = x + 'px';
+    n.speechBubbleEl.style.top = y + 'px';
+    
+    const shouldShow = state.selectedNpcId == id || n.showNameTimer > 0;
+    if (shouldShow && vec.z < 1) {
+      n.speechBubbleEl.classList.add('show');
+    } else {
+      n.speechBubbleEl.classList.remove('show');
+    }
+  });
+}
+
+// =========================================================
+// NPC 업데이트 루프 (매 프레임)
+// =========================================================
+function updateNpcs(dt) {
+  Object.entries(npcMeshes).forEach(([id, n]) => {
+    const npc = state.npcs.find(x => x.id == id);
+    if (!npc) return;
+    
+    // 채팅 메시지 타이머
+    if (n.chatTimer > 0) {
+      n.chatTimer -= dt;
+      if (n.chatTimer <= 0 && n.chatMessage) {
+        n.chatMessage = null;
+        n.speechBubbleEl.textContent = `${npc.emoji} ${npc.name}`;
+        n.speechBubbleEl.classList.remove('chatting');
+      }
+    }
+    
+    if (state.phase === 'night' && !state.simulation.active) {
+      // 시뮬레이션 중이 아닐 때만 자동 귀가 (시뮬레이션 중엔 스크립트가 제어)
+      const home = LOCATIONS[1 + (parseInt(id) % 4)];
+      n.targetPos = new THREE.Vector3(home.x, 0, home.z);
+      n.state = 'walking';
+    }
+    // 시뮬레이션 중 scriptedTarget이 있으면 그걸로 덮어쓰기
+    if (state.simulation.active && n.scriptedTarget) {
+      n.targetPos = n.scriptedTarget;
+      n.state = 'walking';
+    }
+    
+    if (n.state === 'walking' && n.targetPos) {
+      const dir = new THREE.Vector3().subVectors(n.targetPos, n.mesh.position);
+      dir.y = 0;
+      const distance = dir.length();
+      if (distance < 0.3) {
+        n.state = 'idle';
+        n.idleTimer = 1.5 + Math.random() * 3;
+      } else {
+        dir.normalize();
+        const speed = 2.0;
+        n.mesh.position.x += dir.x * speed * dt;
+        n.mesh.position.z += dir.z * speed * dt;
+        const targetAngle = Math.atan2(dir.x, dir.z);
+        n.mesh.rotation.y = targetAngle;
+        n.bounce += dt * 10;
+        n.mesh.position.y = Math.abs(Math.sin(n.bounce)) * 0.08;
+      }
+    } else if (n.state === 'idle') {
+      n.mesh.position.y = 0;
+      n.idleTimer -= dt;
+      Object.entries(npcMeshes).forEach(([otherId, other]) => {
+        if (otherId === id) return;
+        const d = n.mesh.position.distanceTo(other.mesh.position);
+        if (d < 1.5 && other.state === 'idle' && Math.random() < 0.03) {
+          n.state = 'talking';
+          other.state = 'talking';
+          n.idleTimer = 3; other.idleTimer = 3;
+          const angleA = Math.atan2(other.mesh.position.x - n.mesh.position.x, other.mesh.position.z - n.mesh.position.z);
+          n.mesh.rotation.y = angleA;
+          other.mesh.rotation.y = angleA + Math.PI;
+        }
+      });
+      if (n.idleTimer <= 0) {
+        const useFav = Math.random() < 0.6;
+        const target = useFav ? getFavoriteLocation(npc) : LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
+        n.target = target;
+        n.targetPos = new THREE.Vector3(target.x + (Math.random()-0.5)*1.5, 0, target.z + (Math.random()-0.5)*1.5);
+        n.state = 'walking';
+      }
+    } else if (n.state === 'talking') {
+      n.mesh.position.y = Math.sin(performance.now() * 0.004) * 0.05;
+      n.idleTimer -= dt;
+      if (n.idleTimer <= 0) {
+        n.state = 'idle';
+        n.idleTimer = 1 + Math.random() * 2;
+      }
+    }
+    
+    // 말풍선 위치 업데이트 (항상 표시, 머리 위 추적)
+    const vec = new THREE.Vector3();
+    vec.copy(n.mesh.position);
+    vec.y += 2.2; // 머리 바로 위
+    vec.project(camera);
+    
+    // 카메라 뒤에 있으면 숨김 (clipping space에서 z > 1이면 뒤)
+    if (vec.z > 1 || vec.z < -1) {
+      n.speechBubbleEl.classList.add('hide');
+    } else {
+      n.speechBubbleEl.classList.remove('hide');
+      const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
+      n.speechBubbleEl.style.left = x + 'px';
+      n.speechBubbleEl.style.top = y + 'px';
+    }
+  });
+}
+
+// =========================================================
+// 시간/조명 업데이트
+// =========================================================
+function updateTimeOfDay(dt) {
+  // 낮 시간에만 시간이 자동 흐름 (밤에는 버튼으로)
+  if (state.phase === 'day' || state.phase === 'morning') {
+    state.timeOfDay += dt * 0.002; // 더 천천히 흐름
+    if (state.timeOfDay > 0.78) {
+      state.timeOfDay = 0.78; // 저녁에서 멈춤, 밤으로 전환은 버튼
+    }
+  }
+  updateSimulationLighting();
+}
+
+// 조명/창문/상단 바 업데이트 — state.timeOfDay 값에 따라
+function updateSimulationLighting() {
+  const t = state.timeOfDay;
+  let skyColor, lightColor, lightIntensity, ambient;
+  
+  if (t < 0.15) {
+    // 한밤
+    skyColor = new THREE.Color(0x2a3a5c);
+    lightColor = new THREE.Color(0x4a5a8c);
+    lightIntensity = 0.2;
+    ambient = 0.2;
+  } else if (t < 0.28) {
+    // 새벽→아침
+    const p = (t - 0.15) / 0.13;
+    skyColor = new THREE.Color(0x2a3a5c).lerp(new THREE.Color(0xffc896), p);
+    lightColor = new THREE.Color(0xff9e5c).lerp(new THREE.Color(0xffb87a), p);
+    lightIntensity = 0.2 + p * 0.35;
+    ambient = 0.2 + p * 0.25;
+  } else if (t < 0.4) {
+    const p = (t - 0.28) / 0.12;
+    skyColor = new THREE.Color(0xffc896).lerp(new THREE.Color(0xfef3e7), p);
+    lightColor = new THREE.Color(0xffb87a).lerp(new THREE.Color(0xfff0d0), p);
+    lightIntensity = 0.55 + p * 0.2;
+    ambient = 0.45 + p * 0.1;
+  } else if (t < 0.6) {
+    skyColor = new THREE.Color(0xfef3e7);
+    lightColor = new THREE.Color(0xfff0d0);
+    lightIntensity = 0.75;
+    ambient = 0.55;
+  } else if (t < 0.72) {
+    const p = (t - 0.6) / 0.12;
+    skyColor = new THREE.Color(0xfef3e7).lerp(new THREE.Color(0xffc896), p);
+    lightColor = new THREE.Color(0xfff0d0).lerp(new THREE.Color(0xff9e5c), p);
+    lightIntensity = 0.75 - p * 0.25;
+    ambient = 0.55 - p * 0.1;
+  } else if (t < 0.85) {
+    const p = (t - 0.72) / 0.13;
+    skyColor = new THREE.Color(0xffc896).lerp(new THREE.Color(0x6b4c93), p);
+    lightColor = new THREE.Color(0xff9e5c).lerp(new THREE.Color(0x6a5a8c), p);
+    lightIntensity = 0.5 - p * 0.25;
+    ambient = 0.45 - p * 0.15;
+  } else {
+    skyColor = new THREE.Color(0x2a3a5c);
+    lightColor = new THREE.Color(0x4a5a8c);
+    lightIntensity = 0.25;
+    ambient = 0.25;
+  }
+  
+  renderer.setClearColor(skyColor);
+  scene.fog.color = skyColor;
+  sunLight.color = lightColor;
+  sunLight.intensity = lightIntensity;
+  ambientLight.color = lightColor;
+  ambientLight.intensity = ambient;
+  
+  // 밤에는 창문 빛나기
+  const isNight = t < 0.15 || t > 0.85;
+  buildings.forEach(b => {
+    if (b.userData.windowMat) {
+      b.userData.windowMat.emissive = isNight ? new THREE.Color(0xffd580) : new THREE.Color(0x000000);
+    }
+  });
+  
+  // 상단 바 업데이트
+  let phaseLabel = '☀️ 낮';
+  if (t < 0.15) phaseLabel = '🌙 밤';
+  else if (t < 0.28) phaseLabel = '🌄 새벽';
+  else if (t < 0.4) phaseLabel = '🌅 아침';
+  else if (t < 0.6) phaseLabel = '☀️ 낮';
+  else if (t < 0.72) phaseLabel = '🌤️ 오후';
+  else if (t < 0.85) phaseLabel = '🌇 저녁';
+  else phaseLabel = '🌙 밤';
+  document.getElementById('day-badge').textContent = `Day ${state.day} · ${phaseLabel}`;
+  document.getElementById('time-bar-fill').style.width = (t * 100) + '%';
+}
+
+// =========================================================
+// 카메라 컨트롤
+// =========================================================
+let isDragging = false;
+let lastMouseX = 0, lastMouseY = 0;
+renderer.domElement.addEventListener('mousedown', e => {
+  isDragging = true;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+});
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  // 드래그 시 시뮬레이션 중이면 시네마틱 모드 해제 (자유 카메라로 전환)
+  if (state.simulation.active && state.simulation.cameraMode === 'cinematic' && (Math.abs(dx) + Math.abs(dy) > 2)) {
+    state.simulation.cameraMode = 'free';
+    showNotification('📷 자유 카메라 모드 (자동 추적 해제)');
+  }
+  cameraAngle -= dx * 0.005;
+  cameraPitch = Math.max(0.3, Math.min(Math.PI/2.1, cameraPitch - dy * 0.005));
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  updateCamera();
+});
+window.addEventListener('mouseup', () => { isDragging = false; });
+renderer.domElement.addEventListener('wheel', e => {
+  e.preventDefault();
+  cameraDist = Math.max(12, Math.min(50, cameraDist + e.deltaY * 0.02));
+  updateCamera();
+}, { passive: false });
+
+// 터치 지원
+let touchStartDist = 0;
+renderer.domElement.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    lastMouseX = e.touches[0].clientX;
+    lastMouseY = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    isDragging = false;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchStartDist = Math.hypot(dx, dy);
+  }
+});
+renderer.domElement.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1 && isDragging) {
+    const dx = e.touches[0].clientX - lastMouseX;
+    const dy = e.touches[0].clientY - lastMouseY;
+    if (state.simulation.active && state.simulation.cameraMode === 'cinematic' && (Math.abs(dx) + Math.abs(dy) > 2)) {
+      state.simulation.cameraMode = 'free';
+      showNotification('📷 자유 카메라 모드');
+    }
+    cameraAngle -= dx * 0.005;
+    cameraPitch = Math.max(0.3, Math.min(Math.PI/2.1, cameraPitch - dy * 0.005));
+    lastMouseX = e.touches[0].clientX;
+    lastMouseY = e.touches[0].clientY;
+    updateCamera();
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    cameraDist = Math.max(12, Math.min(50, cameraDist + (touchStartDist - dist) * 0.05));
+    touchStartDist = dist;
+    updateCamera();
+  }
+}, { passive: false });
+renderer.domElement.addEventListener('touchend', () => { isDragging = false; });
+
+// NPC 클릭 감지
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let mouseDownPos = null;
+renderer.domElement.addEventListener('mousedown', e => {
+  mouseDownPos = { x: e.clientX, y: e.clientY };
+});
+renderer.domElement.addEventListener('click', e => {
+  if (!mouseDownPos || Math.hypot(e.clientX - mouseDownPos.x, e.clientY - mouseDownPos.y) > 5) return;
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  
+  if (state.viewMode === 'interior') {
+    // 1) 인테리어 오브젝트 클릭 체크 (침대 등)
+    const interiorChildren = [];
+    interiorObjects.traverse(obj => { if (obj.isMesh) interiorChildren.push(obj); });
+    const objHits = raycaster.intersectObjects(interiorChildren, false);
+    if (objHits.length > 0) {
+      // 첫 번째 히트에서 부모를 거슬러 올라가 userData.type이 있는 그룹 찾기
+      let target = objHits[0].object;
+      while (target) {
+        if (target.userData?.type === 'bed') {
+          handleBedClick();
+          return;
+        }
+        target = target.parent;
+      }
+      // userData.bedRef 경로 (자식 메시에 심어둔 참조)
+      if (objHits[0].object.userData?.bedRef) {
+        handleBedClick();
+        return;
+      }
+    }
+    // 2) NPC 클릭 (어디서든 가능)
+    const objects = Object.values(interiorNpcMeshes).map(n => n.mesh);
+    const intersects = raycaster.intersectObjects(objects, true);
+    if (intersects.length > 0) {
+      let obj = intersects[0].object;
+      while (obj && !obj.userData?.npcId) obj = obj.parent;
+      if (obj) selectNpc(obj.userData.npcId);
+    }
+    return;
+  }
+  
+  // ========== 동네 뷰 ==========
+  
+  // 1) NPC 클릭 체크 — 가까우면 즉시 대화, 멀면 자동 접근
+  const npcObjects = Object.values(npcMeshes).map(n => n.mesh);
+  const npcHits = raycaster.intersectObjects(npcObjects, true);
+  if (npcHits.length > 0) {
+    let obj = npcHits[0].object;
+    while (obj && !obj.userData?.npcId) obj = obj.parent;
+    if (obj) {
+      const npcId = obj.userData.npcId;
+      const dist = distanceToNpc(npcId);
+      if (dist <= INTERACTION_RANGE) {
+        // 가까움 → 바로 대화
+        selectNpc(npcId);
+      } else {
+        // 멀음 → 자동으로 다가감 (도착 후 대화 시작)
+        const npc = state.npcs.find(n => n.id == npcId);
+        const name = npc?.name || 'NPC';
+        showNotification(`🏃 ${name}에게 다가가는 중...`);
+        const npcMesh = npcMeshes[npcId].mesh;
+        moveUserTo(npcMesh.position.x, npcMesh.position.z, {
+          stopDistance: INTERACTION_RANGE * 0.85, // 살짝 안쪽에 멈춤
+          pendingNpcId: npcId,
+          onArrive: (arrivedNpcId) => {
+            // 도착 시 NPC가 여전히 근접 범위 안에 있으면 대화 시작
+            if (distanceToNpc(arrivedNpcId) <= INTERACTION_RANGE) {
+              selectNpc(arrivedNpcId);
+            } else {
+              showNotification(`${name}이(가) 이동했어요. 다시 시도해주세요.`);
+            }
+          },
+        });
+      }
+      return;
+    }
+  }
+  
+  // 2) 건물 클릭 체크 — 근접 시 진입, 멀면 자동 접근
+  const buildingHits = raycaster.intersectObjects(buildings, true);
+  if (buildingHits.length > 0) {
+    let obj = buildingHits[0].object;
+    while (obj && obj.userData?.type !== 'building') obj = obj.parent;
+    if (obj && obj.userData?.loc) {
+      const loc = obj.userData.loc;
+      if (state.user.mesh) {
+        const dx = loc.x - state.user.mesh.position.x;
+        const dz = loc.z - state.user.mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist <= INTERACTION_RANGE + 1) {
+          enterInterior(loc);
+        } else {
+          showNotification(`🏃 ${loc.name}으로 이동 중...`);
+          moveUserTo(loc.x, loc.z, {
+            stopDistance: INTERACTION_RANGE,
+            onArrive: () => enterInterior(loc),
+          });
+        }
+      } else {
+        enterInterior(loc);
+      }
+      return;
+    }
+  }
+  
+  // 3) 바닥(지면) 클릭 체크 → 유저 이동
+  if (state.user.mesh) {
+    const groundHits = raycaster.intersectObject(ground, false);
+    if (groundHits.length > 0) {
+      const point = groundHits[0].point;
+      // 월드 경계 대략 제한
+      const clampedX = Math.max(-19, Math.min(19, point.x));
+      const clampedZ = Math.max(-19, Math.min(19, point.z));
+      moveUserTo(clampedX, clampedZ);
+    }
+  }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// =========================================================
+// 게임 로직
+// =========================================================
+function selectNpc(npcId) {
+  const npc = state.npcs.find(n => n.id == npcId);
+  if (!npc) return;
+  
+  // 시나리오 NPC는 제타 스타일 팝업 채팅
+  if (npc.isStory && ['story_chaka', 'story_yami', 'story_bamtol'].includes(npc.id)) {
+    openZeta(npc.id);
+    return;
+  }
+  
+  // 일반 NPC는 기존 사이드 패널 채팅
+  state.selectedNpcId = npcId;
+  state.activeTab = 'chat';
+  renderNpcList();
+  renderTabs();
+  renderContent();
+  // 카메라 이동
+  if (state.viewMode === 'interior') {
+    const mesh = interiorNpcMeshes[npcId]?.mesh;
+    if (mesh) cameraTarget.lerp(new THREE.Vector3(mesh.position.x, 1, mesh.position.z), 0.3);
+  } else {
+    const mesh = npcMeshes[npcId]?.mesh;
+    if (mesh) cameraTarget.lerp(mesh.position, 0.5);
+  }
+}
+
+async function rollGacha() {
+  if (state.loading) return;
+  setLoading(true, '새 주민을 부르는 중...');
+  try {
+    const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
+    const existing = state.npcs.filter(n => n.species === animal.species);
+    
+    if (existing.length > 0 && Math.random() < 0.5) {
+      const target = existing[Math.floor(Math.random() * existing.length)];
+      if (target.level < 3) {
+        target.level += 1;
+        if (target.level === 2 && target.dreamProgress === 0) target.dreamProgress = 30;
+        showNotification(`${animal.emoji} ${target.name}이(가) Lv.${target.level}로 성장했어요!`);
+        renderNpcList();
+        renderCounts();
+        setLoading(false);
+        return;
+      }
+    }
+    
+    const prompt = `동물 주민 동네 게임의 새 NPC를 JSON으로 생성해줘.
+
+종족: ${animal.species} ${animal.emoji}
+종족특성: ${animal.trait}
+말투특성: ${animal.speechTraits}
+
+현재 동네 NPC: ${state.npcs.map(n => `${n.name}(${n.species},${n.job})`).join(', ') || '없음'}
+
+다음 JSON 형식으로만 답해:
+{
+  "name": "이름 (한글 2-3자, 귀엽게)",
+  "job": "직업 (구체적으로)",
+  "dream": "꿈 (직업에서 한 단계 위의 목표)",
+  "personality": "성격 한 줄",
+  "speechHabit": "말버릇 (예: ~냥, ~뿅, ~쿵)",
+  "secretSkill": "비밀 특기"
+}`;
+    
+    const data = await callClaude(
+      '너는 귀엽고 캐주얼한 동물 주민 게임의 캐릭터 디자이너야.',
+      prompt, true
+    );
+    
+    const newNpc = {
+      id: Date.now(),
+      species: animal.species,
+      emoji: animal.emoji,
+      color: animal.color,
+      trait: animal.trait,
+      ...data,
+      level: 1,
+      affinity: 30,
+      dreamProgress: 0,
+    };
+    state.npcs.push(newNpc);
+    spawnNpcMesh(newNpc);
+    showNotification(`${newNpc.emoji} ${newNpc.name}이(가) 동네에 왔어요!`);
+    renderNpcList();
+    renderCounts();
+  } catch (err) {
+    showNotification('오류가 발생했어요.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function sendChatMessage(text) {
+  console.log('[sendChatMessage] start', { text, selectedNpcId: state.selectedNpcId, loading: state.loading });
+  if (!text.trim() || !state.selectedNpcId || state.loading) {
+    console.warn('[sendChatMessage] aborted', { reason: !text.trim() ? 'no text' : !state.selectedNpcId ? 'no npc' : 'loading' });
+    return;
+  }
+  const npc = state.npcs.find(n => n.id == state.selectedNpcId);
+  if (!npc) return;
+  const npcId = npc.id;
+  
+  const history = state.chatHistory[npcId] || [];
+  history.push({ role: 'user', text: text.trim() });
+  state.chatHistory[npcId] = history;
+  renderContent();
+  
+  setLoading(true, `${npc.name} 생각중...`);
+  try {
+    let storyContext = '';
+    if (npc.isStory) {
+      const stage = state.storyStage;
+      if (npc.id === 'story_chaka') {
+        storyContext = `\n\n[배경 - 너는 사진사 차카다]\n- 너는 어젯밤 사진관 앞에서 야경 사진을 찍었다.\n- 나중에 사진을 본 밤톨이 "야미가 책을 훔쳤다"고 오해했다는 걸 ${stage === 'day1' ? '아직 모른다' : '알게 되었다'}.\n- 너는 단지 야경이 아름다워서 찍었을 뿐이고, 야미가 뭘 하는지는 잘 못 봤다.\n- ${stage === 'quest_active' || stage === 'day2_triggered' ? '지금은 상황이 혼란스러워서 사진을 내려야 할지 고민 중이다.' : ''}`;
+      } else if (npc.id === 'story_yami') {
+        storyContext = `\n\n[배경 - 너는 문학도 학생 야미다]\n- 너는 밤톨 서점에 책을 예약했고, 뒷문 열쇠를 받아 밤에 책을 픽업했다. 훔친 게 아니다.\n- 독서 모임을 준비 중이고, 첫 모임 장소로 밤톨 서점을 빌리기로 했었다.\n- ${stage === 'day2_triggered' ? '오늘 도둑이라는 소문을 듣고 큰 충격을 받았다. 억울하고 슬프다.' : ''}\n- ${stage === 'quest_active' ? '밤톨이 독서 모임 장소 대여를 거절했다. 꿈이 흔들린다.' : ''}\n- ${stage === 'resolved' ? '사건이 마무리됐다.' : ''}`;
+      } else if (npc.id === 'story_bamtol') {
+        storyContext = `\n\n[배경 - 너는 서점 주인 밤톨이다]\n- 너는 야미가 책을 "훔쳤다"고 믿고 있다. 차카의 야경 사진 한 장이 근거다.\n- 사실은 야미가 예약한 책이고, 너의 장부에 기록이 있다. 하지만 감정이 앞서서 확인을 못 하고 있다.\n- ${stage === 'day2_triggered' ? '지금 화가 나 있고, 누구든 이 얘기를 꺼내면 방어적이다.' : ''}\n- ${stage === 'quest_active' ? '야미가 독서 모임 장소를 빌려달라고 했지만 거절했다.' : ''}`;
+      }
+    }
+    
+    const system = `너는 동물 주민 동네 게임의 NPC다. 귀엽고 캐주얼한 톤으로 짧게 대답해.
+
+너의 정보:
+- 이름: ${npc.name} (${npc.species} ${npc.emoji})
+- 직업: ${npc.job}
+- 꿈: ${npc.dream} (${npc.dreamProgress}%)
+- 성격: ${npc.personality}
+- 말버릇: "${npc.speechHabit}" (자주 섞어)
+- 종족특성: ${npc.trait}
+- 호감도: ${npc.affinity}/100
+
+규칙:
+- 1-2문장만
+- 말버릇을 자주 붙여
+- 호감도 낮으면 거리감 있게, 높으면 친근하게
+- 최근 동네 소문을 꺼낼 수도 있음${storyContext}
+
+최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
+    
+    const context = history.slice(-6).map(m => `${m.role === 'user' ? '유저' : npc.name}: ${m.text}`).join('\n');
+    const response = await callClaude(system, context);
+    
+    history.push({ role: 'npc', text: response });
+    state.chatHistory[npcId] = history;
+    
+    // 호감도/꿈 진행도
+    npc.affinity = Math.min(100, npc.affinity + 3);
+    npc.dreamProgress = Math.min(100, npc.dreamProgress + 2);
+    
+    // 말풍선에 최근 메시지 임시 표시 (4초간)
+    const meshData = state.viewMode === 'interior' ? interiorNpcMeshes[npcId] : npcMeshes[npcId];
+    if (meshData) {
+      const shortMsg = response.length > 20 ? response.substring(0, 20) + '...' : response;
+      meshData.speechBubbleEl.textContent = `${npc.emoji} ${shortMsg}`;
+      meshData.speechBubbleEl.classList.add('chatting');
+      meshData.chatMessage = shortMsg;
+      meshData.chatTimer = 4;
+    }
+    
+    renderNpcList();
+    renderContent();
+  } catch (err) {
+    showNotification('대화 오류가 발생했어요.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function advanceToNightAndMorning() {
+  if (state.npcs.length === 0) {
+    showNotification('먼저 주민을 한 명 이상 모아야 해요!');
+    return;
+  }
+  if (state.loading) return;
+  
+  state.phase = 'night';
+  state.timeOfDay = 0.95; // 밤
+  
+  setLoading(true, '밤이 깊어가고 있어요...');
+  try {
+    const nextDay = state.day + 1;
+    const isStoryTriggerDay = (nextDay === 2) && state.storyStage === 'day1';
+    const isQuestTriggerDay = (nextDay === 3) && state.storyStage === 'day2_triggered';
+    
+    const newReports = [];
+    const newRumors = [];
+    const newQuests = [];
+    
+    // ========== Day 2 진입: 서점 사건 오프닝 ==========
+    if (isStoryTriggerDay) {
+      setLoading(true, '동네에 이상한 기운이 흐르고 있어요...');
+      
+      // 시나리오 고정 리포트 3개
+      const chaka = state.npcs.find(n => n.id === 'story_chaka');
+      const yami = state.npcs.find(n => n.id === 'story_yami');
+      const bamtol = state.npcs.find(n => n.id === 'story_bamtol');
+      
+      if (chaka) newReports.push({ day: nextDay, npcId: chaka.id, text: BOOKSTORE_STORY.chakaReport });
+      if (yami) newReports.push({ day: nextDay, npcId: yami.id, text: BOOKSTORE_STORY.yamiReport });
+      if (bamtol) newReports.push({ day: nextDay, npcId: bamtol.id, text: BOOKSTORE_STORY.bamtolReport });
+      
+      // 시나리오 고정 소문 (왜곡된 버전)
+      if (yami) {
+        newRumors.push({
+          id: Date.now() + 1,
+          day: nextDay,
+          aboutNpcId: yami.id,
+          text: BOOKSTORE_STORY.rumorText,
+          isStory: true,
+        });
+        newRumors.push({
+          id: Date.now() + 2,
+          day: nextDay,
+          aboutNpcId: yami.id,
+          text: BOOKSTORE_STORY.rumorTextMild,
+          isStory: true,
+        });
+      }
+      
+      // 호감도 변동
+      if (bamtol) bamtol.affinity = Math.max(0, bamtol.affinity - 8);
+      if (chaka) chaka.affinity = Math.max(0, chaka.affinity - 3);
+      if (yami) yami.affinity = Math.max(0, yami.affinity - 5);
+      // 야미 꿈 진행도 약간 후퇴 (소문으로 인한 타격)
+      if (yami) yami.dreamProgress = Math.max(0, yami.dreamProgress - 10);
+      
+      // 일반 NPC 리포트도 소수 생성
+      const nonStoryNpcs = state.npcs.filter(n => !n.isStory);
+      for (const npc of nonStoryNpcs.slice(0, 2)) {
+        const prompt = `${npc.species} ${npc.name}의 어젯밤 활동 한 줄 리포트. 직업:${npc.job}, 꿈:${npc.dream}. 25자 이내, "어젯밤"으로 시작, 호기심 훅 스타일. 답은 리포트 문장만.`;
+        try {
+          const text = await callClaude('너는 동네 관찰자야.', prompt);
+          newReports.push({ day: nextDay, npcId: npc.id, text });
+        } catch (e) {}
+      }
+      
+      state.storyStage = 'day2_triggered';
+    }
+    // ========== Day 3 진입: 야미의 꿈 분기점 퀘스트 자동 발동 ==========
+    else if (isQuestTriggerDay) {
+      setLoading(true, '야미에게 중요한 순간이 다가오고 있어요...');
+      
+      const yami = state.npcs.find(n => n.id === 'story_yami');
+      const bamtol = state.npcs.find(n => n.id === 'story_bamtol');
+      
+      // 후속 리포트
+      if (yami) newReports.push({ day: nextDay, npcId: yami.id, text: '야미가 밤새 서점 앞을 서성였다는 이야기가 돌아요.' });
+      if (bamtol) newReports.push({ day: nextDay, npcId: bamtol.id, text: '밤톨이 야미에게 독서모임 장소 대여를 거절했대요.' });
+      
+      // 꿈 분기점 퀘스트 (호감도 분기)
+      if (yami) {
+        const isFriendly = yami.affinity >= 50;
+        const situation = isFriendly
+          ? `야미가 당신에게 조용히 찾아와 털어놓아요. "책을 훔쳤다는 소문이 퍼져서 첫 독서 모임 장소로 빌리기로 했던 밤톨 서점에서도 거절당했다냥... 장부를 확인하면 내가 예약한 책이라는 게 드러날 텐데, 밤톨이 너무 화나서 들어주질 않아서... 꿈을 포기해야 할지도 모르겠다냥. 어떻게 해야 할까요?"`
+          : `야미가 당신을 복잡한 눈빛으로 쳐다봐요. "다들 나를 도둑이라고 본다냥... 당신도 그렇게 보는 거죠? 독서 모임은 이제 못 열 것 같다냥. 밤톨한테 설명하고 싶은데 말 걸 용기도 안 나고... 내가 뭘 해야 할까요, 정말." 아직 당신을 완전히 믿지는 못하는 눈치에요.`;
+        
+        newQuests.push({
+          id: Date.now() + 100,
+          npcId: yami.id,
+          day: nextDay,
+          situation,
+          relatedRumors: [BOOKSTORE_STORY.rumorText, BOOKSTORE_STORY.rumorTextMild],
+          resolved: false, result: null,
+          isStory: true,
+          affinityRoute: isFriendly ? 'high' : 'low',
+        });
+      }
+      
+      state.storyStage = 'quest_active';
+    }
+    // ========== 일반 날짜: 기존 로직 그대로 ==========
+    else {
+      for (const npc of state.npcs) {
+        setLoading(true, `${npc.name}의 밤을 관찰 중...`);
+        const prompt = `${npc.species} ${npc.name}의 어젯밤 활동 한 줄 리포트를 만들어줘.
+
+정보: 직업=${npc.job}, 꿈=${npc.dream}, 성격=${npc.personality}
+
+규칙:
+- 1문장, 최대 25자
+- '왜'는 설명 X
+- "어젯밤" 또는 "밤새" 로 시작
+- 호기심 훅 스타일
+
+답은 리포트 문장 하나만.`;
+        try {
+          const text = await callClaude('너는 동네 관찰자야.', prompt);
+          newReports.push({ day: nextDay, npcId: npc.id, text });
+        } catch (e) {}
+      }
+      
+      // 소문 생성
+      setLoading(true, '동네에 소문이 돌고 있어요...');
+      for (const r of newReports) {
+        if (Math.random() < 0.5) {
+          const npc = state.npcs.find(n => n.id === r.npcId);
+          const prompt = `다음 사실을 한 단계만 왜곡해서 귀여운 동네 소문으로 바꿔줘.
+원본: ${r.text}
+주인공: ${npc.name} ${npc.emoji}
+규칙: 한 단어/맥락만 바꿔 오해, 25자 이내, 소문체.
+답은 소문 문장 하나만.`;
+          try {
+            const rumorText = await callClaude('너는 수다쟁이야.', prompt);
+            newRumors.push({ id: Date.now() + Math.random(), day: nextDay, aboutNpcId: r.npcId, text: rumorText });
+          } catch (e) {}
+        }
+      }
+      
+      for (const npc of state.npcs) {
+        const h = state.chatHistory[npc.id];
+        if (h && h.length >= 2 && Math.random() < 0.3) {
+          const recent = h.slice(-4).map(m => `${m.role === 'user' ? '유저' : npc.name}: ${m.text}`).join('\n');
+          const prompt = `대화에서 소문거리를 찾아 한 단계 왜곡해. 없으면 "NONE".
+대화:${recent}
+주인공: ${npc.name}
+규칙: 25자 이내.`;
+          try {
+            const rumorText = await callClaude('너는 수다쟁이야.', prompt);
+            if (!rumorText.includes('NONE')) {
+              newRumors.push({ id: Date.now() + Math.random(), day: nextDay, aboutNpcId: npc.id, text: rumorText });
+            }
+          } catch (e) {}
+        }
+      }
+      
+      // 소문 있는 NPC 퀘스트 (일반)
+      const rumorNpcIds = [...new Set(newRumors.filter(r => !r.isStory).map(r => r.aboutNpcId))];
+      for (const npcId of rumorNpcIds) {
+        const npc = state.npcs.find(n => n.id === npcId);
+        if (!npc || npc.isStory) continue; // 스토리 NPC는 별도 처리
+        const targetRumors = newRumors.filter(r => r.aboutNpcId === npcId);
+        const prompt = `${npc.name}의 꿈이 걸린 분기 퀘스트 상황을 만들어.
+
+NPC: ${npc.name} (${npc.species} ${npc.emoji})
+직업: ${npc.job}, 꿈: ${npc.dream}
+성격: ${npc.personality}, 호감도: ${npc.affinity}/100
+
+소문들:
+${targetRumors.map(r => '- ' + r.text).join('\n')}
+
+규칙: 2-3문장, 선택지 금지, 귀여운 톤, "어떻게 할까요?"로 끝.
+답은 상황 설명만.`;
+        try {
+          const situation = await callClaude('너는 이벤트 디자이너야.', prompt);
+          newQuests.push({
+            id: Date.now() + Math.random(),
+            npcId, day: nextDay,
+            situation,
+            relatedRumors: targetRumors.map(r => r.text),
+            resolved: false, result: null,
+          });
+        } catch (e) {}
+      }
+    }
+    
+    // 상태 반영
+    state.reports.push(...newReports);
+    state.rumors.push(...newRumors);
+    state.quests.push(...newQuests);
+    state.day = nextDay;
+    state.phase = 'morning';
+    state.timeOfDay = 0.3;
+    state.activeTab = 'report';
+    
+    showNotification(`🌅 ${nextDay}일차 아침이 밝았어요!`);
+    renderTabs();
+    renderContent();
+    renderCounts();
+    renderNpcList();
+    
+    // 스토리 모달 표시
+    if (isStoryTriggerDay) {
+      // 증거 이미지 체인: 사진관 쇼윈도 → 빈 선반 → 장부 → 스토리 모달
+      setTimeout(() => {
+        showEvidencePopup('photostudio_window', '사진관 쇼윈도에 걸린 한 장의 사진...');
+      }, 500);
+      setTimeout(() => {
+        window.__closeEvidence();
+        setTimeout(() => showEvidencePopup('missing_book_shelf', '서점 선반에서 책 한 권이 사라졌다!'), 300);
+      }, 3500);
+      setTimeout(() => {
+        window.__closeEvidence();
+        setTimeout(() => showEvidencePopup('bamtol_ledger', '밤톨이 확인한 장부. 뭔가 이상하다...'), 300);
+      }, 6500);
+      setTimeout(() => {
+        window.__closeEvidence();
+        setTimeout(() => showStoryModal(BOOKSTORE_STORY.day2Opening.title, BOOKSTORE_STORY.day2Opening.body), 400);
+      }, 9500);
+    } else if (isQuestTriggerDay) {
+      setTimeout(() => showStoryModal(
+        '📖 야미가 당신을 찾아왔어요',
+        '야미의 꿈("독서 모임 만들기")이 분기점에 섰어요. 사건 탭에서 야미와 마주하고 직접 행동을 적어보세요.\n\n호감도가 높으면 야미가 먼저 속마음을 털어놓고, 낮으면 당신도 의심할 거예요.'
+      ), 800);
+    }
+  } catch (err) {
+    showNotification('시뮬레이션 오류가 발생했어요.');
+    console.error(err);
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function submitQuestAction(text) {
+  if (!text.trim() || !state.activeQuestId || state.loading) return;
+  const quest = state.quests.find(q => q.id == state.activeQuestId);
+  if (!quest) return;
+  const npc = state.npcs.find(n => n.id === quest.npcId);
+  
+  setLoading(true, '상황을 판정하는 중...');
+  try {
+    const prompt = `유저의 자유 행동을 3축으로 판정해.
+
+상황: ${quest.situation}
+
+NPC: ${npc.name} (꿈=${npc.dream}, 꿈진행도=${npc.dreamProgress}%, 호감도=${npc.affinity}/100)
+소문: ${quest.relatedRumors.join(' / ')}
+
+유저 행동: "${text.trim()}"
+
+JSON으로만 답해:
+{
+  "narrative": "2-3문장. 귀여운 톤. NPC 반응 포함.",
+  "dreamAxis": "forward" | "detour" | "backward",
+  "dreamDelta": -30~+30 숫자,
+  "rumorAxis": "resolve" | "ignore" | "worsen",
+  "affinityDelta": -20~+20 숫자,
+  "resultLabel": "결과 요약 (20자 이내)"
+}`;
+    const data = await callClaude('너는 자유행동 판정 시스템이야.', prompt, true);
+    
+    npc.dreamProgress = Math.max(0, Math.min(100, npc.dreamProgress + data.dreamDelta));
+    npc.affinity = Math.max(0, Math.min(100, npc.affinity + data.affinityDelta));
+    quest.resolved = true;
+    quest.result = data;
+    quest.userAction = text.trim();
+    
+    // 스토리 퀘스트 해결 시 증거 팝업 체인
+    if (quest.isStory && quest.affinityRoute === 'high' && data.dreamAxis === 'forward') {
+      // 호감도 높음 + 성공 → 증거 1(예약증) + 증거 2(선반 밑 발견) 팝업
+      if (/장부|예약|확인/.test(text)) {
+        setTimeout(() => showEvidencePopup('book_reservation_slip', '증거 1: 야미의 예약증이 발견됐어요!'), 800);
+        setTimeout(() => {
+          window.__closeEvidence();
+          setTimeout(() => showEvidencePopup('missing_book_found', '증거 2: 선반 밑에서 사라진 책을 찾았어요!'), 400);
+        }, 3500);
+      } else if (/서점|뒤져|찾아/.test(text)) {
+        setTimeout(() => showEvidencePopup('missing_book_found', '밤톨과 함께 서점을 뒤지다가 찾았어요!'), 800);
+      } else {
+        setTimeout(() => showEvidencePopup('book_reservation_slip', '예약증이 발견됐어요!'), 800);
+      }
+    }
+    
+    // 스토리 퀘스트 해결 시 스토리 단계 완료
+    if (quest.isStory && state.storyStage === 'quest_active') {
+      state.storyStage = 'resolved';
+      // 결과에 따른 스토리 에필로그
+      setTimeout(() => {
+        let epilogueTitle, epilogueBody;
+        if (data.dreamAxis === 'forward') {
+          epilogueTitle = '🌸 사건이 해결됐어요';
+          epilogueBody = `야미의 독서 모임이 다시 길을 찾았어요.\n\n${data.resultLabel}\n\n동네는 다시 평화를 찾았고, 밤톨도 자신의 성급함을 반성하게 됐어요.`;
+        } else if (data.dreamAxis === 'backward') {
+          epilogueTitle = '🥀 야미의 꿈이 흔들렸어요';
+          epilogueBody = `오해는 풀리지 않았고, 야미의 독서 모임은 당분간 미뤄졌어요.\n\n${data.resultLabel}\n\n하지만 세계는 계속 돌아가요. 언젠가 다시 기회가 올지도...`;
+        } else {
+          epilogueTitle = '🌾 사건이 한 걸음 비껴갔어요';
+          epilogueBody = `직접적 해결은 없었지만, 야미는 다른 길을 찾을 준비를 해요.\n\n${data.resultLabel}`;
+        }
+        showStoryModal(epilogueTitle, epilogueBody);
+      }, data.dreamAxis === 'forward' ? 7000 : 1500);
+    }
+    
+    showNotification(`✨ ${data.resultLabel}`);
+    renderNpcList();
+    renderContent();
+    renderCounts();
+  } catch (err) {
+    showNotification('판정 오류가 발생했어요.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// =========================================================
+// UI 렌더링
+// =========================================================
+function renderCounts() {
+  document.getElementById('npc-count').textContent = `주민 ${state.npcs.length}명`;
+  const unresolved = state.quests.filter(q => !q.resolved).length;
+  const qc = document.getElementById('quest-count');
+  const qd = document.getElementById('quest-dot');
+  if (unresolved > 0) {
+    qc.style.display = 'inline-block';
+    qc.textContent = `사건 ${unresolved}건`;
+    qd.style.display = 'inline-block';
+  } else {
+    qc.style.display = 'none';
+    qd.style.display = 'none';
+  }
+}
+
+function renderNpcList() {
+  const list = document.getElementById('npc-list');
+  if (state.npcs.length === 0) {
+    list.innerHTML = '<div class="empty-state"><span class="big-emoji">🎁</span>가챠를 돌려<br>첫 주민을 만나봐요!</div>';
+    return;
+  }
+  list.innerHTML = state.npcs.map(n => `
+    <div class="npc-card ${state.selectedNpcId == n.id ? 'selected' : ''} ${n.isStory ? 'story' : ''}" data-npc-id="${n.id}">
+      <div class="npc-emoji">${n.emoji}</div>
+      <div class="npc-info">
+        <div class="npc-name">${n.name} <span class="stars">${'★'.repeat(n.level)}</span></div>
+        <div class="npc-job">${n.job}</div>
+        <div class="progress-row">
+          <span class="heart-indicator">♥ ${n.affinity}</span>
+          <div class="dream-bar"><div class="dream-fill" style="width:${n.dreamProgress}%"></div></div>
+        </div>
+        ${n.dream ? `<div style="font-size:9px; color:#c44536; margin-top:2px; font-style:italic">✦ ${n.dream}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+  list.querySelectorAll('.npc-card').forEach(el => {
+    el.addEventListener('click', () => {
+      const npcId = parseInt(el.dataset.npcId);
+      // 인테리어에 있으면 근접 체크 없이 바로 대화
+      if (state.viewMode === 'interior') {
+        selectNpc(npcId);
+        return;
+      }
+      // 동네 뷰: 근접하지 않으면 자동 이동 후 대화
+      if (!state.user.mesh) { selectNpc(npcId); return; }
+      const dist = distanceToNpc(npcId);
+      if (dist <= INTERACTION_RANGE) {
+        selectNpc(npcId);
+      } else {
+        const npc = state.npcs.find(n => n.id == npcId);
+        const name = npc?.name || 'NPC';
+        showNotification(`🏃 ${name}에게 다가가는 중...`);
+        const npcMesh = npcMeshes[npcId].mesh;
+        moveUserTo(npcMesh.position.x, npcMesh.position.z, {
+          stopDistance: INTERACTION_RANGE * 0.85,
+          pendingNpcId: npcId,
+          onArrive: (arrivedNpcId) => {
+            if (distanceToNpc(arrivedNpcId) <= INTERACTION_RANGE) {
+              selectNpc(arrivedNpcId);
+            } else {
+              showNotification(`${name}이(가) 이동했어요. 다시 시도해주세요.`);
+            }
+          },
+        });
+      }
+    });
+  });
+}
+
+function renderTabs() {
+  document.querySelectorAll('.tab-bar button').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === state.activeTab);
+  });
+}
+
+function renderContent() {
+  const el = document.getElementById('tab-content');
+  if (state.activeTab === 'chat') {
+    const npc = state.npcs.find(n => n.id == state.selectedNpcId);
+    if (!npc) {
+      el.innerHTML = '<div class="empty-state"><span class="big-emoji">💬</span>좌측이나 맵에서<br>주민을 선택해보세요</div>';
+      return;
+    }
+    const history = state.chatHistory[npc.id] || [];
+    el.innerHTML = `
+      <div style="padding-bottom:8px; border-bottom:1px solid #f0e4d4; margin-bottom:8px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <div style="font-size:24px">${npc.emoji}</div>
+          <div>
+            <div style="font-weight:700; font-size:13px; color:#6b4423">${npc.name}</div>
+            <div style="font-size:10px; color:#9c7a5a">${npc.job} · ${npc.personality}</div>
+          </div>
+        </div>
+        <div style="font-size:10px; color:#9c7a5a; margin-top:4px">
+          꿈: ${npc.dream} ${npc.level >= 2 ? `· ${npc.level >= 3 ? `✨ ${npc.secretSkill}` : '비밀이 있는 것 같다...'}` : ''}
+        </div>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        ${history.length === 0 ? '<div class="empty-state" style="padding:20px"><span class="big-emoji" style="font-size:24px">💬</span>'+npc.name+'에게 말을 걸어봐요</div>' : ''}
+        ${history.map(m => `<div class="chat-msg ${m.role}">${m.role === 'npc' ? npc.emoji + ' ' : ''}${escapeHtml(m.text)}</div>`).join('')}
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="메시지를 입력하세요..." />
+        <button class="send-btn" id="send-btn">➤</button>
+      </div>
+    `;
+    const input = document.getElementById('chat-input');
+    const send = document.getElementById('send-btn');
+    const doSend = () => { const v = input.value; input.value = ''; sendChatMessage(v); };
+    send.addEventListener('click', doSend);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') doSend(); });
+    const cm = document.getElementById('chat-messages');
+    if (cm) cm.scrollTop = cm.scrollHeight;
+  }
+  else if (state.activeTab === 'report') {
+    const today = state.reports.filter(r => r.day === state.day);
+    const older = state.reports.filter(r => r.day < state.day).slice(-10).reverse();
+    el.innerHTML = `
+      <div class="section-title">📜 아침 리포트 · Day ${state.day}</div>
+      ${today.length === 0 ? '<div class="empty-state"><span class="big-emoji">☀️</span>아직 리포트가 없어요.<br>"밤으로" 버튼을 눌러 다음 날을 시작해보세요.</div>' : 
+        today.map(r => {
+          const npc = state.npcs.find(n => n.id === r.npcId);
+          return `<div class="report-item"><div>${npc?.emoji || '❓'}</div><div>${escapeHtml(r.text)}</div></div>`;
+        }).join('')
+      }
+      ${older.length > 0 ? `
+        <details style="margin-top:12px">
+          <summary style="cursor:pointer; font-size:11px; color:#9c7a5a">이전 리포트 보기</summary>
+          <div style="margin-top:6px">
+            ${older.map(r => {
+              const npc = state.npcs.find(n => n.id === r.npcId);
+              return `<div class="report-item" style="opacity:0.7; font-size:11px"><div>${npc?.emoji}</div><div><span style="color:#9c7a5a">Day ${r.day}:</span> ${escapeHtml(r.text)}</div></div>`;
+            }).join('')}
+          </div>
+        </details>
+      ` : ''}
+    `;
+  }
+  else if (state.activeTab === 'board') {
+    const rumors = [...state.rumors].reverse();
+    el.innerHTML = `
+      <div class="section-title">📢 동네 소문 게시판</div>
+      ${rumors.length === 0 ? '<div class="empty-state"><span class="big-emoji">📜</span>아직 소문이 없어요.<br>주민과 어울리고 밤을 보내면 소문이 돌아요.</div>' : `
+        <div class="rumor-board">
+          <div class="rumor-board-title">── 🏘️ 우리 동네 소식 ──</div>
+          ${rumors.map(r => {
+            const npc = state.npcs.find(n => n.id === r.aboutNpcId);
+            const isNew = r.day === state.day;
+            const isStory = r.isStory;
+            return `<div class="rumor-note ${isStory ? 'story' : ''} ${isNew ? 'new-tag' : ''}">
+              <div style="display:flex; align-items:flex-start; gap:6px">
+                <div style="font-size:18px">${npc?.emoji || '❓'}</div>
+                <div style="flex:1">${escapeHtml(r.text)}</div>
+              </div>
+              <div class="rumor-meta">
+                <span>Day ${r.day} · ${npc?.name || '?'}</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    `;
+  }
+  else if (state.activeTab === 'quest') {
+    if (state.activeQuestId) {
+      const q = state.quests.find(x => x.id == state.activeQuestId);
+      if (!q) { state.activeQuestId = null; renderContent(); return; }
+      const npc = state.npcs.find(n => n.id === q.npcId);
+      el.innerHTML = `
+        <button class="btn btn-small" id="back-quest" style="margin-bottom:10px">← 목록으로</button>
+        <div class="quest-detail">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px">
+            <div style="font-size:22px">${npc?.emoji}</div>
+            <div style="font-weight:700">${npc?.name}의 사건</div>
+          </div>
+          <div>${escapeHtml(q.situation)}</div>
+          ${q.relatedRumors.length > 0 ? `
+            <div class="quest-rumors">
+              <div>관련 소문:</div>
+              ${q.relatedRumors.map(r => `<div>· ${escapeHtml(r)}</div>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+        ${q.resolved ? `
+          <div class="quest-action">당신의 행동: "${escapeHtml(q.userAction)}"</div>
+          <div class="quest-result">
+            <div>${escapeHtml(q.result.narrative)}</div>
+            <div class="quest-axes">
+              <span class="axis-chip">꿈: ${q.result.dreamAxis === 'forward' ? '🌱 전진' : q.result.dreamAxis === 'backward' ? '🥀 후퇴' : '🌾 우회'} (${q.result.dreamDelta > 0 ? '+' : ''}${q.result.dreamDelta})</span>
+              <span class="axis-chip">소문: ${q.result.rumorAxis === 'resolve' ? '🕊️ 해소' : q.result.rumorAxis === 'worsen' ? '🔥 악화' : '💭 무시'}</span>
+              <span class="axis-chip">관계: ${q.result.affinityDelta > 0 ? '💗' : q.result.affinityDelta < 0 ? '💔' : '❤️'} ${q.result.affinityDelta > 0 ? '+' : ''}${q.result.affinityDelta}</span>
+            </div>
+          </div>
+        ` : `
+          <div style="font-size:11px; color:#9c7a5a; margin-bottom:4px">어떻게 할까요? (비워두면 방관)</div>
+          <textarea class="quest-input" id="quest-input" placeholder="예: 밤톨에게 장부를 함께 확인하자고 설득한다 / 함께 서점을 뒤져본다 / 차카에게 사진의 맥락을 물어본다"></textarea>
+          <button class="btn btn-primary" id="quest-submit" style="width:100%; margin-top:8px">행동하기</button>
+        `}
+      `;
+      document.getElementById('back-quest').addEventListener('click', () => { state.activeQuestId = null; renderContent(); });
+      if (!q.resolved) {
+        document.getElementById('quest-submit').addEventListener('click', () => {
+          const v = document.getElementById('quest-input').value;
+          submitQuestAction(v);
+        });
+      }
+    } else {
+      const quests = [...state.quests].reverse();
+      const evidenceList = ASSET_SLOTS.evidence;
+      el.innerHTML = `
+        <div class="section-title">📦 증거 보관함</div>
+        <div class="evidence-grid" style="margin-bottom:14px">
+          ${evidenceList.map(key => {
+            const meta = ASSET_META[key] || { emoji: '🔍', label: key === 'missing_book_found' ? '선반 밑의 책' : key };
+            const collected = collectedEvidence.has(key);
+            const img = assetRegistry[key];
+            return `<div class="evidence-slot ${collected ? 'collected' : 'locked'}" data-key="${key}">
+              <div class="evidence-slot-thumb">${collected && img ? `<img src="${img}" />` : (collected ? meta.emoji : '🔒')}</div>
+              <div class="evidence-slot-name">${collected ? meta.label : '???'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        
+        <div class="section-title">📖 동네 사건</div>
+        ${quests.length === 0 ? '<div class="empty-state"><span class="big-emoji">📖</span>아직 사건이 없어요.<br>소문이 돈 다음 날 사건이 생겨요.</div>' :
+          quests.map(q => {
+            const npc = state.npcs.find(n => n.id === q.npcId);
+            return `<div class="quest-item ${q.resolved ? 'resolved' : ''}" data-quest-id="${q.id}">
+              <div style="display:flex; align-items:center; gap:6px">
+                <div style="font-size:20px">${npc?.emoji}</div>
+                <div style="font-weight:700; font-size:12px">${npc?.name}의 사건
+                  ${!q.resolved ? '<span style="color:#e63946; margin-left:4px">●NEW</span>' : '<span style="color:#888; margin-left:4px; font-size:10px">✓ 완료</span>'}
+                </div>
+              </div>
+              <div style="font-size:11px; color:#9c7a5a; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden">${escapeHtml(q.situation)}</div>
+              <div style="font-size:10px; color:#b59878">Day ${q.day}</div>
+            </div>`;
+          }).join('')
+        }
+      `;
+      // 증거 슬롯 클릭 시 팝업
+      el.querySelectorAll('.evidence-slot.collected').forEach(slot => {
+        slot.addEventListener('click', () => {
+          const key = slot.dataset.key;
+          const meta = ASSET_META[key] || { label: key };
+          showEvidencePopup(key, meta.label);
+        });
+      });
+      el.querySelectorAll('.quest-item').forEach(item => {
+        item.addEventListener('click', () => {
+          state.activeQuestId = parseFloat(item.dataset.questId);
+          renderContent();
+        });
+      });
+    }
+  }
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// 탭 이벤트
+document.querySelectorAll('.tab-bar button').forEach(b => {
+  if (!b.dataset.tab) return;
+  b.addEventListener('click', () => {
+    state.activeTab = b.dataset.tab;
+    if (b.dataset.tab !== 'quest') state.activeQuestId = null;
+    renderTabs();
+    renderContent();
+  });
+});
+
+// =========================================================
+// 인트로 가챠 (전역 함수로 노출 - onclick에서 호출)
+// =========================================================
+// 5회 가챠 시퀀스 (고정 NPC 5명을 섞어서 뽑기 연출)
+let introDrawSequence = null;
+let introDrawIndex = 0;
+
+function buildDrawSequence() {
+  // STORY_NPCS 5명의 순서를 섞기만 함 (누가 먼저 뽑힐지는 랜덤)
+  return [...STORY_NPCS].sort(() => Math.random() - 0.5);
+}
+
+window.__introRollGacha = async function() {
+  console.log('[intro] gacha clicked, index:', introDrawIndex);
+  const btn = document.getElementById('intro-gacha-btn');
+  const loading = document.getElementById('intro-loading');
+  const capsule = document.getElementById('gacha-capsule');
+  const result = document.getElementById('gacha-result');
+  const actions = document.getElementById('gacha-result-actions');
+  
+  if (!introDrawSequence) {
+    // 첫 가챠 시작 시 상태 완전 리셋
+    state.npcs = [];
+    introDrawIndex = 0;
+    introDrawSequence = buildDrawSequence();
+    console.log('[intro] sequence built:', introDrawSequence.map(n => n.name).join(','));
+  }
+  
+  btn.disabled = true;
+  btn.style.display = 'none';
+  loading.classList.add('show');
+  loading.style.display = 'flex';
+  capsule.classList.remove('popped');
+  capsule.classList.add('rolling');
+  capsule.textContent = '🎁';
+  capsule.querySelectorAll('.gacha-sparkle').forEach(s => s.remove());
+  result.classList.remove('show');
+  result.style.display = 'none';
+  
+  try {
+    // 연출용 딜레이 (0.9~1.3초 랜덤)
+    const delay = 900 + Math.random() * 400;
+    await new Promise(r => setTimeout(r, delay));
+    
+    const npcTemplate = introDrawSequence[introDrawIndex];
+    const newNpc = { ...npcTemplate }; // 복사해서 추가
+    state.npcs.push(newNpc);
+    introDrawIndex++;
+    
+    console.log('[intro] drew:', newNpc.name);
+    
+    // 진행도 업데이트
+    document.getElementById('gacha-count').textContent = introDrawIndex;
+    
+    // UI 갱신
+    capsule.classList.remove('rolling');
+    capsule.classList.add('popped');
+    capsule.textContent = newNpc.emoji;
+    loading.classList.remove('show');
+    loading.style.display = 'none';
+    
+    // 반짝이
+    for (let i = 0; i < 8; i++) {
+      const s = document.createElement('div');
+      s.className = 'gacha-sparkle';
+      s.textContent = ['✨','⭐','💫','🌟'][i % 4];
+      const angle = (i / 8) * Math.PI * 2;
+      s.style.setProperty('--dx', Math.cos(angle) * 80 + 'px');
+      s.style.setProperty('--dy', Math.sin(angle) * 80 + 'px');
+      s.style.animationDelay = (i * 0.05) + 's';
+      capsule.appendChild(s);
+    }
+    
+    // 결과 카드 채우기
+    document.getElementById('result-name').textContent = newNpc.name;
+    document.getElementById('result-species').textContent = `${newNpc.species} · ${newNpc.trait}`;
+    document.getElementById('result-job').textContent = newNpc.job;
+    document.getElementById('result-dream').textContent = newNpc.dream || '—';
+    document.getElementById('result-personality').textContent = newNpc.personality;
+    document.getElementById('result-speech').textContent = `"${newNpc.speechHabit}"`;
+    
+    // 액션 버튼
+    if (introDrawIndex < 5) {
+      actions.innerHTML = `<button class="story-modal-close" style="margin-top:0" onclick="window.__introRollGacha()">🎲 다음 주민 뽑기 (${introDrawIndex}/5)</button>`;
+    } else {
+      actions.innerHTML = `<button class="story-modal-close" style="margin-top:0; background: linear-gradient(135deg, #7c94c7 0%, #9d7cc7 100%)" onclick="window.__enterVillage()">🌿 마을로 입장하기</button>`;
+    }
+    
+    setTimeout(() => {
+      result.classList.add('show');
+      result.style.display = 'block';
+    }, 400);
+  } catch (err) {
+    console.error('[intro] fatal error:', err);
+    loading.classList.remove('show');
+    loading.style.display = 'none';
+    capsule.classList.remove('rolling');
+    btn.disabled = false;
+    btn.style.display = 'inline-block';
+    btn.textContent = '🎲 다시 시도';
+    showNotification('❌ 오류: ' + (err.message || '알 수 없는 오류'));
+  }
+};
+
+window.__enterVillage = function() {
+  console.log('[intro] enter village clicked, npc count:', state.npcs.length);
+  const intro = document.getElementById('intro-screen');
+  intro.classList.add('fade-out');
+  setTimeout(() => {
+    intro.style.display = 'none';
+    
+    // state.npcs에는 이미 인트로에서 뽑은 5명이 있음 (메인 3 + 랜덤 2)
+    // 중복 스폰 방지 (혹시 이미 메시가 있으면 스킵)
+    state.npcs.forEach(npc => {
+      if (!npcMeshes[npc.id]) spawnNpcMesh(npc);
+    });
+    // 유저 아바타 스폰 (광장 중앙)
+    spawnUserMesh();
+    
+    renderNpcList();
+    renderCounts();
+    
+    showNotification(`🏘️ 5명의 주민과 함께 동네가 시작됐어요!`);
+    
+    // Day 1 스토리 힌트 팝업
+    setTimeout(() => {
+      showStoryModal(
+        '🏘️ 동네가 시작됐어요',
+        '5명의 주민들과 함께 새 동네가 열렸어요.\n\n🧑 광장 중앙에 있는 게 당신이에요.\n• 바닥을 클릭하면 그쪽으로 이동합니다.\n• NPC를 클릭하면 가까이 다가가서 대화해요.\n• 집(북쪽)의 침대를 클릭하면 잠들 수 있어요.'
+      );
+    }, 1200);
+  }, 800);
+};
+
+// 버튼 이벤트 등록 (안전하게)
+function attach(id, event, fn) {
+  const el = document.getElementById(id);
+  if (!el) { console.warn('Element not found:', id); return; }
+  el.addEventListener(event, fn);
+}
+attach('gacha-btn', 'click', rollGacha);
+attach('night-btn', 'click', advanceToNightAndMorning);
+attach('exit-interior', 'click', exitInterior);
+
+// 초기 렌더링
+renderNpcList();
+renderTabs();
+renderContent();
+renderCounts();
+
+// =========================================================
+// 애니메이션 루프
+// =========================================================
+let lastTime = performance.now();
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  
+  if (state.viewMode === 'interior') {
+    updateInteriorNpcs(dt);
+    updateInteriorLighting();
+    // 외부 NPC·유저 말풍선 숨기기
+    Object.values(npcMeshes).forEach(n => {
+      n.speechBubbleEl.classList.add('hide');
+    });
+    if (state.user.bubbleEl) state.user.bubbleEl.classList.add('hide');
+    renderer.render(interiorScene, camera);
+  } else {
+    // 실내 말풍선 숨기기
+    Object.values(interiorNpcMeshes).forEach(n => {
+      n.speechBubbleEl.classList.add('hide');
+    });
+    updateNpcs(dt);
+    
+    // 시뮬레이션 중에는 유저 아바타 숨김 + 시간은 runSimulationTick이 관리
+    if (state.simulation.active) {
+      if (state.user.mesh) state.user.mesh.visible = false;
+      if (state.user.bubbleEl) state.user.bubbleEl.classList.add('hide');
+      runSimulationTick(dt);
+      // 조명만 갱신 (시간 흐름에 따른 하늘/조명)
+      updateSimulationLighting();
+    } else {
+      if (state.user.mesh) state.user.mesh.visible = true;
+      updateUser(dt);
+      updateDestinationMarker(dt);
+      updateTimeOfDay(dt);
+    }
+    renderer.render(scene, camera);
+  }
+}
+animate();
+</script>
