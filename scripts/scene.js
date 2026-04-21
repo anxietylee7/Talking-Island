@@ -951,8 +951,8 @@ function getFavoriteLocation(npc) {
 }
 
 function spawnNpcMesh(npc) {
-  // 시나리오 NPC는 species 없음 → animal을 기본값으로 대체
-  const animal = ANIMALS.find(a => a.species === npc.species) || {
+  // 시나리오 NPC는 species 없음 → 기본값으로 대체
+  const animal = {
     species: '사람', emoji: npc.emoji || '👤', color: npc.color || 0xffd9b3,
   };
   const mesh = createNpcMesh(animal, npc.id);
