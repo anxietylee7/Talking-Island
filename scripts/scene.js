@@ -95,6 +95,38 @@ LOCATIONS.slice(1, 5).forEach((loc, i) => {
     win.position.set(j * 0.8, 1.2, 1.51);
     group.add(win);
   }
+  // 문 (건물 정면 중앙, 광장을 향한 쪽)
+  // 건물 중심(loc.x, loc.z)과 문 좌표(loc.door)의 차이로 방향 판단
+  if (loc.door) {
+    const doorDx = loc.door.x - loc.x;
+    const doorDz = loc.door.z - loc.z;
+    // 문 프레임 (어두운 색)
+    const doorFrameGeo = new THREE.PlaneGeometry(0.9, 1.6);
+    const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0x5a3a2a });
+    const doorFrame = new THREE.Mesh(doorFrameGeo, doorFrameMat);
+    // 문은 건물 외벽에 붙어있어야 함 — 광장 방향 면에
+    if (Math.abs(doorDz) > Math.abs(doorDx)) {
+      // 문이 남/북쪽
+      doorFrame.position.set(0, 0.8, doorDz > 0 ? 1.51 : -1.51);
+      if (doorDz < 0) doorFrame.rotation.y = Math.PI;
+    } else {
+      // 문이 동/서쪽
+      doorFrame.position.set(doorDx > 0 ? 1.51 : -1.51, 0.8, 0);
+      doorFrame.rotation.y = doorDx > 0 ? Math.PI/2 : -Math.PI/2;
+    }
+    group.add(doorFrame);
+    // 문 손잡이 (작은 황금색 구)
+    const knobGeo = new THREE.SphereGeometry(0.06, 8, 8);
+    const knobMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, emissive: 0x332200 });
+    const knob = new THREE.Mesh(knobGeo, knobMat);
+    const knobOffset = 0.25;
+    if (Math.abs(doorDz) > Math.abs(doorDx)) {
+      knob.position.set(knobOffset, 0.85, doorDz > 0 ? 1.53 : -1.53);
+    } else {
+      knob.position.set(doorDx > 0 ? 1.53 : -1.53, 0.85, knobOffset);
+    }
+    group.add(knob);
+  }
   // 간판 이모지 대신 색칠된 깃발
   const flagGeo = new THREE.BoxGeometry(0.1, 1.5, 0.1);
   const flag = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
@@ -742,7 +774,12 @@ function spawnNpcMesh(npc) {
     bounce: 0,
     chatMessage: null,
     chatTimer: 0,
-    currentScene: loc === 'outside' ? 'outside' : 'waiting', // 현재 어느 씬에 속해있는지 추적
+    currentScene: loc === 'outside' ? 'outside' : 'waiting',
+    // 건물 외출/귀가 상태 머신
+    // 'in_building' | 'outgoing' | 'wandering' | 'returning'
+    buildingState: loc === 'outside' ? 'wandering' : 'in_building',
+    // 다음 상태 전환까지 남은 시간 (초)
+    outingTimer: 10 + Math.random() * 20, // 초기 10~30초
   };
   const t = npcMeshes[npc.id].target;
   npcMeshes[npc.id].targetPos = new THREE.Vector3(t.x + (Math.random()-0.5)*1.5, 0, t.z + (Math.random()-0.5)*1.5);
@@ -1464,12 +1501,134 @@ function exitInterior() {
 }
 
 // =========================================================
+// NPC 외출/귀가 상태 머신 업데이트
+// buildingState: 'in_building' | 'outgoing' | 'wandering' | 'returning'
+// =========================================================
+function updateNpcBuildingState(dt, id, n, npc) {
+  // homeLocation이 'outside'면 상태 머신 작동 안 함 (항상 wandering)
+  if (!npc.homeLocation || npc.homeLocation === 'outside') {
+    n.buildingState = 'wandering';
+    return;
+  }
+  // 시뮬레이션 중엔 스크립트가 제어하므로 건너뜀
+  if (state.simulation.active) return;
+  // 밤 시간은 자동 귀가 로직이 따로 있으니 건너뜀
+  if (state.phase === 'night') return;
+  
+  const homeLoc = LOCATIONS.find(l => l.interior === npc.homeLocation);
+  if (!homeLoc || !homeLoc.door) return;
+  
+  n.outingTimer -= dt;
+  
+  switch (n.buildingState) {
+    case 'in_building': {
+      // 건물 안에 있음 (visible=false인 상태). 시간이 되면 외출 시도
+      if (n.outingTimer <= 0) {
+        // 30% 확률로 외출 결정
+        if (Math.random() < 0.3) {
+          n.buildingState = 'outgoing';
+          // 문 좌표로 이동 (외부 씬에 등장)
+          if (n.currentScene !== 'outside') {
+            // 현재 씬 정리 (아직 interior 씬에 있으면 밖으로)
+            if (n.currentScene === 'interior') {
+              interiorScene.remove(n.mesh);
+              scene.add(n.mesh);
+            }
+            n.currentScene = 'outside';
+          }
+          n.mesh.position.set(homeLoc.door.x, 0, homeLoc.door.z);
+          n.mesh.visible = true;
+          n.speechBubbleEl.classList.remove('hide');
+          // 광장 방향으로 목표
+          n.targetPos = new THREE.Vector3(
+            (Math.random() - 0.5) * 4,
+            0,
+            (Math.random() - 0.5) * 4
+          );
+          n.state = 'walking';
+          npc.location = 'outside';
+          n.outingTimer = 15 + Math.random() * 25; // 15~40초간 외출
+        } else {
+          n.outingTimer = 10 + Math.random() * 15; // 다시 시도까지 10~25초
+        }
+      }
+      break;
+    }
+    case 'outgoing': {
+      // 광장 방향으로 걸어가는 중 — 일정 거리 벗어나면 wandering
+      const distFromDoor = Math.hypot(
+        n.mesh.position.x - homeLoc.door.x,
+        n.mesh.position.z - homeLoc.door.z
+      );
+      if (distFromDoor > 2.5) {
+        n.buildingState = 'wandering';
+      }
+      break;
+    }
+    case 'wandering': {
+      // 외부 산책 중. 시간 다 되면 귀가 시도
+      if (n.outingTimer <= 0) {
+        n.buildingState = 'returning';
+        n.targetPos = new THREE.Vector3(homeLoc.door.x, 0, homeLoc.door.z);
+        n.state = 'walking';
+        n.outingTimer = 20;
+      }
+      break;
+    }
+    case 'returning': {
+      // 자기 집 문으로 가는 중 — 문에 도달하면 들어감
+      const distToDoor = Math.hypot(
+        n.mesh.position.x - homeLoc.door.x,
+        n.mesh.position.z - homeLoc.door.z
+      );
+      if (distToDoor < 0.8) {
+        // 문에 도달 → 건물로 들어감
+        n.buildingState = 'in_building';
+        npc.location = npc.homeLocation;
+        // 메시를 외부 씬에서 떼어 내부 씬으로? 
+        // → 유저가 그 건물에 있을 때만 내부 씬으로 이동, 아니면 일단 visible=false만
+        const viewingThisBuilding = (
+          state.viewMode === 'interior' &&
+          state.currentInterior && state.currentInterior.interior === npc.homeLocation
+        );
+        if (viewingThisBuilding) {
+          scene.remove(n.mesh);
+          interiorScene.add(n.mesh);
+          n.currentScene = 'interior';
+          n.mesh.position.set(
+            (Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6
+          );
+          n.mesh.visible = true;
+          n.speechBubbleEl.classList.remove('hide');
+          n.targetPos = new THREE.Vector3(
+            (Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6
+          );
+          n.state = 'walking';
+        } else {
+          n.mesh.visible = false;
+          n.speechBubbleEl.classList.add('hide');
+        }
+        // 타이머 재설정 (다음 외출까지 20~40초)
+        n.outingTimer = 20 + Math.random() * 20;
+      }
+      // targetPos를 문 방향으로 계속 갱신
+      n.targetPos = new THREE.Vector3(homeLoc.door.x, 0, homeLoc.door.z);
+      n.state = 'walking';
+      break;
+    }
+  }
+}
+
+// =========================================================
 // NPC 업데이트 루프 (매 프레임)
 // =========================================================
 function updateNpcs(dt) {
   Object.entries(npcMeshes).forEach(([id, n]) => {
     const npc = state.npcs.find(x => x.id == id);
     if (!npc) return;
+    
+    // 건물 외출/귀가 상태 머신 (씬 모드와 무관하게 계속 돌아감)
+    updateNpcBuildingState(dt, id, n, npc);
     
     // 메시가 visible=false면 이동/말풍선 처리 건너뜀
     if (!n.mesh.visible) {
@@ -1859,16 +2018,20 @@ renderer.domElement.addEventListener('click', e => {
     while (obj && obj.userData?.type !== 'building') obj = obj.parent;
     if (obj && obj.userData?.loc) {
       const loc = obj.userData.loc;
+      // 문이 있으면 문으로, 없으면 건물 중심 (유저 집은 문이 있어도 건물 중심으로 처리하면 충돌)
+      const entryX = loc.door ? loc.door.x : loc.x;
+      const entryZ = loc.door ? loc.door.z : loc.z;
       if (state.user.mesh) {
-        const dx = loc.x - state.user.mesh.position.x;
-        const dz = loc.z - state.user.mesh.position.z;
+        const dx = entryX - state.user.mesh.position.x;
+        const dz = entryZ - state.user.mesh.position.z;
         const dist = Math.hypot(dx, dz);
-        if (dist <= INTERACTION_RANGE + 1) {
+        if (dist <= 1.2) {
+          // 문 근처 도착 → 바로 진입
           enterInterior(loc);
         } else {
-          showNotification(`🏃 ${loc.name}으로 이동 중...`);
-          moveUserTo(loc.x, loc.z, {
-            stopDistance: INTERACTION_RANGE,
+          showNotification(`🚪 ${loc.name} 문으로 이동 중...`);
+          moveUserTo(entryX, entryZ, {
+            stopDistance: 0.5,
             onArrive: () => enterInterior(loc),
           });
         }
