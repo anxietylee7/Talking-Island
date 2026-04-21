@@ -314,9 +314,13 @@ const NPC_MODEL_MAP = {
   'story_somi': 'models/somi.glb',
 };
 
+// 유저 전용 GLB 모델 (없으면 null로 두면 기존 프리미티브가 유지됨)
+const USER_MODEL_PATH = 'models/user.glb';
+
 // 모델의 자동 크기 조정: NPC 메시의 표준 높이는 약 2.0 유닛
 // (기존 프리미티브 머리 끝이 대략 y=1.7~1.8 정도)
-const TARGET_NPC_HEIGHT = 2.0;
+// 모델의 자동 크기 조정: 프리미티브 NPC 기준(~1.8)의 약 절반 크기
+const TARGET_NPC_HEIGHT = 1.0;
 
 // GLTF 씬을 NPC group에 붙이고 크기 자동 조정 + 애니메이션 믹서 반환
 function attachGltfToGroup(group, gltfScene, animations) {
@@ -665,6 +669,36 @@ function createUserMesh() {
     cheek.position.set(x, 1.6, 0.22);
     group.add(cheek);
   }
+  
+  // 🔧 유저 GLB 모델 로드 시도 (있으면 프리미티브 교체, 없으면 프리미티브 유지)
+  // 모든 자식 메시에 isFallback 플래그 찍어서 나중에 일괄 숨김 가능하게
+  const userFallbackMeshes = [];
+  group.traverse(obj => {
+    if (obj.isMesh) {
+      obj.userData.isFallback = true;
+      userFallbackMeshes.push(obj);
+    }
+  });
+  group.userData.fallbackMeshes = userFallbackMeshes;
+  
+  // GLB 파일 비동기 로드 시도
+  if (USER_MODEL_PATH) {
+    gltfLoader.load(
+      USER_MODEL_PATH,
+      gltf => {
+        const { mixer } = attachGltfToGroup(group, gltf.scene, gltf.animations);
+        group.userData.mixer = mixer;
+        // 프리미티브 숨김
+        userFallbackMeshes.forEach(m => { m.visible = false; });
+        console.log(`[gltf] loaded user model ${USER_MODEL_PATH}`, gltf.animations?.length ? `(${gltf.animations.length} animations)` : '(no animations)');
+      },
+      undefined,
+      err => {
+        console.warn(`[gltf] user model not found at ${USER_MODEL_PATH} — using primitive fallback`);
+        // 404 등이면 프리미티브 그대로 유지 (정상 동작)
+      }
+    );
+  }
 
   return group;
 }
@@ -769,6 +803,11 @@ function updateUser(dt) {
   const u = state.user;
   if (!u.mesh) return;
   
+  // GLB 애니메이션 믹서 업데이트 (있으면)
+  if (u.mesh.userData.mixer) {
+    u.mesh.userData.mixer.update(dt);
+  }
+  
   // 이름표 위치 업데이트
   if (u.bubbleEl) {
     const vec = u.mesh.position.clone();
@@ -844,9 +883,11 @@ function updateUser(dt) {
   }
   
   u.mesh.rotation.y = Math.atan2(dirX, dirZ);
-  // 걷기 바운스
+  // 걷기 바운스 (GLB 애니메이션이 없을 때만 수동)
   u.bounce += dt * 8;
-  u.mesh.position.y = Math.abs(Math.sin(u.bounce)) * 0.06;
+  if (!u.mesh.userData.mixer) {
+    u.mesh.position.y = Math.abs(Math.sin(u.bounce)) * 0.06;
+  }
   u.position.x = u.mesh.position.x;
   u.position.z = u.mesh.position.z;
 }
