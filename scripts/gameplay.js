@@ -15,12 +15,13 @@ function selectNpc(npcId) {
   renderTabs();
   renderContent();
   // 카메라 이동
-  if (state.viewMode === 'interior') {
-    const mesh = interiorNpcMeshes[npcId]?.mesh;
-    if (mesh) cameraTarget.lerp(new THREE.Vector3(mesh.position.x, 1, mesh.position.z), 0.3);
-  } else {
-    const mesh = npcMeshes[npcId]?.mesh;
-    if (mesh) cameraTarget.lerp(mesh.position, 0.5);
+  const mesh = npcMeshes[npcId]?.mesh;
+  if (mesh) {
+    if (state.viewMode === 'interior') {
+      cameraTarget.lerp(new THREE.Vector3(mesh.position.x, 1, mesh.position.z), 0.3);
+    } else {
+      cameraTarget.lerp(mesh.position, 0.5);
+    }
   }
 }
 
@@ -77,6 +78,7 @@ async function rollGacha() {
       level: 1,
       affinity: 30,
       dreamProgress: 0,
+      location: 'outside',
     };
     state.npcs.push(newNpc);
     spawnNpcMesh(newNpc);
@@ -153,7 +155,7 @@ async function sendChatMessage(text) {
     npc.dreamProgress = Math.min(100, npc.dreamProgress + 2);
     
     // 말풍선에 최근 메시지 임시 표시 (4초간)
-    const meshData = state.viewMode === 'interior' ? interiorNpcMeshes[npcId] : npcMeshes[npcId];
+    const meshData = npcMeshes[npcId];
     if (meshData) {
       const shortMsg = response.length > 20 ? response.substring(0, 20) + '...' : response;
       meshData.speechBubbleEl.textContent = `${npc.emoji} ${shortMsg}`;
