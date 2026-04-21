@@ -160,7 +160,11 @@ function animate() {
   
   if (state.viewMode === 'interior') {
     updateInteriorLighting();
-    // 유저 말풍선 숨기기 (유저는 외부에만 있음)
+    // 유저는 내부에서도 움직일 수 있음
+    if (state.user.mesh) state.user.mesh.visible = true;
+    updateUser(dt);
+    updateDestinationMarker(dt);
+    // 유저 이름 말풍선은 내부에서 숨김 (답답함 방지)
     if (state.user.bubbleEl) state.user.bubbleEl.classList.add('hide');
     renderer.render(interiorScene, camera);
   } else {
