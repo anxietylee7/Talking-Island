@@ -60,18 +60,9 @@ async function sendChatMessage(text) {
   
   setLoading(true, `${npc.name} 생각중...`);
   try {
-    let storyContext = '';
-    if (npc.isStory) {
-      const stage = state.storyStage;
-      if (npc.id === 'chaka') {
-        storyContext = `\n\n[배경 - 너는 사진사 차카다]\n- 너는 어젯밤 사진관 앞에서 야경 사진을 찍었다.\n- 나중에 사진을 본 밤톨이 "야미가 책을 훔쳤다"고 오해했다는 걸 ${stage === 'day1' ? '아직 모른다' : '알게 되었다'}.\n- 너는 단지 야경이 아름다워서 찍었을 뿐이고, 야미가 뭘 하는지는 잘 못 봤다.\n- ${stage === 'quest_active' || stage === 'day2_triggered' ? '지금은 상황이 혼란스러워서 사진을 내려야 할지 고민 중이다.' : ''}`;
-      } else if (npc.id === 'yami') {
-        storyContext = `\n\n[배경 - 너는 문학도 학생 야미다]\n- 너는 밤톨 서점에 책을 예약했고, 뒷문 열쇠를 받아 밤에 책을 픽업했다. 훔친 게 아니다.\n- 독서 모임을 준비 중이고, 첫 모임 장소로 밤톨 서점을 빌리기로 했었다.\n- ${stage === 'day2_triggered' ? '오늘 도둑이라는 소문을 듣고 큰 충격을 받았다. 억울하고 슬프다.' : ''}\n- ${stage === 'quest_active' ? '밤톨이 독서 모임 장소 대여를 거절했다. 꿈이 흔들린다.' : ''}\n- ${stage === 'resolved' ? '사건이 마무리됐다.' : ''}`;
-      } else if (npc.id === 'bamtol') {
-        storyContext = `\n\n[배경 - 너는 서점 주인 밤톨이다]\n- 너는 야미가 책을 "훔쳤다"고 믿고 있다. 차카의 야경 사진 한 장이 근거다.\n- 사실은 야미가 예약한 책이고, 너의 장부에 기록이 있다. 하지만 감정이 앞서서 확인을 못 하고 있다.\n- ${stage === 'day2_triggered' ? '지금 화가 나 있고, 누구든 이 얘기를 꺼내면 방어적이다.' : ''}\n- ${stage === 'quest_active' ? '야미가 독서 모임 장소를 빌려달라고 했지만 거절했다.' : ''}`;
-      }
-    }
-    
+    // [8단계 제거] storyStage 기반 하드코딩 storyContext 블록 삭제.
+    //              엔진의 getDialogueContext 가 전담 (아래 engineContext).
+
     const speciesTag = npc.species ? ` (${npc.species} ${npc.emoji || ''})` : '';
     const system = `너는 아기자기한 동네 게임의 NPC다. 캐주얼하고 자연스러운 톤으로 짧게 대답해.
 
@@ -87,12 +78,11 @@ async function sendChatMessage(text) {
 - 1-2문장만
 - 말버릇을 자주 붙여
 - 호감도 낮으면 거리감 있게, 높으면 친근하게
-- 최근 동네 소문을 꺼낼 수도 있음${storyContext}
+- 최근 동네 소문을 꺼낼 수도 있음
 
 최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
 
-    // [7단계] 시나리오 엔진이 제공하는 단계별/임시 배경 concat. Q1=C (하드코딩 유지, 엔진 출력 추가).
-    // 일반 NPC (솜이/루루 등) 는 엔진이 빈 문자열 반환하므로 영향 없음.
+    // [7단계] 엔진 배경 concat. [8단계] 하드코딩 제거로 엔진이 storyContext 전담.
     let engineContext = '';
     try {
       if (window.scenarioEngine && typeof window.scenarioEngine.getDialogueContext === 'function') {
@@ -136,107 +126,70 @@ async function sendChatMessage(text) {
   }
 }
 
+// [8단계 재작성] advanceToNightAndMorning
+// 이전 버전: Day 2/3 진입 시 isStoryTriggerDay / isQuestTriggerDay 분기로 하드코딩 리포트/소문/
+//            퀘스트 생성 + 증거 팝업 체인 + 스토리 모달을 직접 띄웠다 (storyStage 수동 갱신 포함).
+// 새 버전:
+//   1. 먼저 엔진의 runNightSimulation({ dryRun: false }) 호출.
+//      - 현재 단계에 해당하는 밤 씨앗이 있으면 AI 로 장면 생성 + effects 실행 (호감도/증거팝업/소문).
+//      - sleepCount 도 +1 해 준다.
+//      - 씨앗 없는 단계(resolved)는 빈 결과로 즉시 반환됨.
+//   2. 엔진의 checkStageTransition() 호출.
+//      - 전환 조건 충족 시 _transitionStage 가 자동으로 새 단계로 이동 + autoOnStageEnter 이벤트 발동.
+//      - 이걸로 Day 2 진입 시 증거 팝업/스토리 모달/퀘스트 발동이 시나리오 데이터 기반으로 처리됨.
+//   3. 일반 날짜용 리포트/소문/NPC 퀘스트 생성 로직은 "시나리오 엔진이 stage transition 을 만들지 않은
+//      날"에 한해 기존대로 실행 (Q1=B 결정).
+//   4. 마지막에 state.day 증가 + UI 갱신.
+//
+// 제거된 것:
+//   - isStoryTriggerDay / isQuestTriggerDay 분기 전체
+//   - BOOKSTORE_STORY.* 참조 (chakaReport/yamiReport/bamtolReport/rumorText/day2Opening 등)
+//   - state.storyStage 갱신 코드 (엔진이 전담)
+//   - 증거 팝업 setTimeout 체인 (엔진 autoOnStageEnter 가 대체, UI 큐로 순차 표시)
+//   - 야미 퀘스트 모달 (엔진 triggerQuest effect 가 대체)
 async function advanceToNightAndMorning() {
-  // 5명 고정 NPC 구조라 "주민 0명" 체크는 더 이상 필요 없음
   if (state.loading) return;
-  
+
   state.phase = 'night';
-  state.timeOfDay = 0.95; // 밤
-  
+  state.timeOfDay = 0.95;
+
   setLoading(true, '밤이 깊어가고 있어요...');
   try {
     const nextDay = state.day + 1;
-    const isStoryTriggerDay = (nextDay === 2) && state.storyStage === 'day1';
-    const isQuestTriggerDay = (nextDay === 3) && state.storyStage === 'day2_triggered';
-    
+
+    // ─── Phase 1: 시나리오 엔진 밤 시뮬 ───
+    let engineBeforeStage = null;
+    let nightResult = null;
+    try {
+      if (window.scenarioEngine && typeof window.scenarioEngine.runNightSimulation === 'function') {
+        engineBeforeStage = window.scenarioEngine.currentStage;
+        setLoading(true, '동네의 밤을 관찰하고 있어요...');
+        nightResult = await window.scenarioEngine.runNightSimulation({ dryRun: false });
+      }
+    } catch (err) {
+      console.error('[advance] runNightSimulation 에러 (무시하고 진행):', err);
+    }
+
+    // ─── Phase 2: 단계 전환 체크 ───
+    let stageTransitioned = false;
+    try {
+      if (window.scenarioEngine && typeof window.scenarioEngine.checkStageTransition === 'function') {
+        const newStage = window.scenarioEngine.checkStageTransition();
+        if (newStage && newStage !== engineBeforeStage) {
+          stageTransitioned = true;
+          console.log('[advance] 엔진 단계 전환:', engineBeforeStage, '→', newStage);
+        }
+      }
+    } catch (err) {
+      console.error('[advance] checkStageTransition 에러 (무시하고 진행):', err);
+    }
+
+    // ─── Phase 3: 일반 날짜 리포트/소문/NPC 퀘스트 생성 (Q1=B) ───
     const newReports = [];
     const newRumors = [];
     const newQuests = [];
-    
-    // ========== Day 2 진입: 서점 사건 오프닝 ==========
-    if (isStoryTriggerDay) {
-      setLoading(true, '동네에 이상한 기운이 흐르고 있어요...');
-      
-      // 시나리오 고정 리포트 3개
-      const chaka = state.npcs.find(n => n.id === 'chaka');
-      const yami = state.npcs.find(n => n.id === 'yami');
-      const bamtol = state.npcs.find(n => n.id === 'bamtol');
-      
-      if (chaka) newReports.push({ day: nextDay, npcId: chaka.id, text: BOOKSTORE_STORY.chakaReport });
-      if (yami) newReports.push({ day: nextDay, npcId: yami.id, text: BOOKSTORE_STORY.yamiReport });
-      if (bamtol) newReports.push({ day: nextDay, npcId: bamtol.id, text: BOOKSTORE_STORY.bamtolReport });
-      
-      // 시나리오 고정 소문 (왜곡된 버전)
-      if (yami) {
-        newRumors.push({
-          id: Date.now() + 1,
-          day: nextDay,
-          aboutNpcId: yami.id,
-          text: BOOKSTORE_STORY.rumorText,
-          isStory: true,
-        });
-        newRumors.push({
-          id: Date.now() + 2,
-          day: nextDay,
-          aboutNpcId: yami.id,
-          text: BOOKSTORE_STORY.rumorTextMild,
-          isStory: true,
-        });
-      }
-      
-      // 호감도 변동
-      if (bamtol) bamtol.affinity = Math.max(0, bamtol.affinity - 8);
-      if (chaka) chaka.affinity = Math.max(0, chaka.affinity - 3);
-      if (yami) yami.affinity = Math.max(0, yami.affinity - 5);
-      // 야미 꿈 진행도 약간 후퇴 (소문으로 인한 타격)
-      if (yami) yami.dreamProgress = Math.max(0, yami.dreamProgress - 10);
-      
-      // 일반 NPC 리포트도 소수 생성 (루루, 솜이 등 배경 NPC 대상)
-      const nonStoryNpcs = state.npcs.filter(n => !n.isMain);
-      for (const npc of nonStoryNpcs.slice(0, 2)) {
-        const prompt = `${npc.name}의 어젯밤 활동 한 줄 리포트. 직업:${npc.job}, 꿈:${npc.dream}. 25자 이내, "어젯밤"으로 시작, 호기심 훅 스타일. 답은 리포트 문장만.`;
-        try {
-          const text = await callClaude('너는 동네 관찰자야.', prompt);
-          newReports.push({ day: nextDay, npcId: npc.id, text });
-        } catch (e) {}
-      }
-      
-      state.storyStage = 'day2_triggered';
-    }
-    // ========== Day 3 진입: 야미의 꿈 분기점 퀘스트 자동 발동 ==========
-    else if (isQuestTriggerDay) {
-      setLoading(true, '야미에게 중요한 순간이 다가오고 있어요...');
-      
-      const yami = state.npcs.find(n => n.id === 'yami');
-      const bamtol = state.npcs.find(n => n.id === 'bamtol');
-      
-      // 후속 리포트
-      if (yami) newReports.push({ day: nextDay, npcId: yami.id, text: '야미가 밤새 서점 앞을 서성였다는 이야기가 돌아요.' });
-      if (bamtol) newReports.push({ day: nextDay, npcId: bamtol.id, text: '밤톨이 야미에게 독서모임 장소 대여를 거절했대요.' });
-      
-      // 꿈 분기점 퀘스트 (호감도 분기)
-      if (yami) {
-        const isFriendly = yami.affinity >= 50;
-        const situation = isFriendly
-          ? `야미가 당신에게 조용히 찾아와 털어놓아요. "책을 훔쳤다는 소문이 퍼져서 첫 독서 모임 장소로 빌리기로 했던 밤톨 서점에서도 거절당했지... 장부를 확인하면 내가 예약한 책이라는 게 드러날 텐데, 밤톨이 너무 화나서 들어주질 않아서... 꿈을 포기해야 할지도 모르겠지. 어떻게 해야 할까?"`
-          : `야미가 당신을 복잡한 눈빛으로 쳐다봐요. "다들 나를 도둑이라고 보지... 당신도 그렇게 보는 거지? 독서 모임은 이제 못 열 것 같지. 밤톨한테 설명하고 싶은데 말 걸 용기도 안 나고... 내가 뭘 해야 할까, 정말." 아직 당신을 완전히 믿지는 못하는 눈치에요.`;
-        
-        newQuests.push({
-          id: Date.now() + 100,
-          npcId: yami.id,
-          day: nextDay,
-          situation,
-          relatedRumors: [BOOKSTORE_STORY.rumorText, BOOKSTORE_STORY.rumorTextMild],
-          resolved: false, result: null,
-          isStory: true,
-          affinityRoute: isFriendly ? 'high' : 'low',
-        });
-      }
-      
-      state.storyStage = 'quest_active';
-    }
-    // ========== 일반 날짜: 기존 로직 그대로 ==========
-    else {
+
+    if (!stageTransitioned) {
       for (const npc of state.npcs) {
         setLoading(true, `${npc.name}의 밤을 관찰 중...`);
         const speciesPrefix = npc.species ? `${npc.species} ` : '';
@@ -256,8 +209,7 @@ async function advanceToNightAndMorning() {
           newReports.push({ day: nextDay, npcId: npc.id, text });
         } catch (e) {}
       }
-      
-      // 소문 생성
+
       setLoading(true, '동네에 소문이 돌고 있어요...');
       for (const r of newReports) {
         if (Math.random() < 0.5) {
@@ -273,7 +225,7 @@ async function advanceToNightAndMorning() {
           } catch (e) {}
         }
       }
-      
+
       for (const npc of state.npcs) {
         const h = state.chatHistory[npc.id];
         if (h && h.length >= 2 && Math.random() < 0.3) {
@@ -290,12 +242,11 @@ async function advanceToNightAndMorning() {
           } catch (e) {}
         }
       }
-      
-      // 소문 있는 NPC 퀘스트 (일반)
+
       const rumorNpcIds = [...new Set(newRumors.filter(r => !r.isStory).map(r => r.aboutNpcId))];
       for (const npcId of rumorNpcIds) {
         const npc = state.npcs.find(n => n.id === npcId);
-        if (!npc || npc.isStory) continue; // 스토리 NPC는 별도 처리
+        if (!npc || npc.isStory) continue;
         const targetRumors = newRumors.filter(r => r.aboutNpcId === npcId);
         const prompt = `${npc.name}의 꿈이 걸린 분기 퀘스트 상황을 만들어.
 
@@ -319,9 +270,18 @@ ${targetRumors.map(r => '- ' + r.text).join('\n')}
           });
         } catch (e) {}
       }
+    } else {
+      // 스토리 전환이 일어난 날: 엔진 씨앗 결과를 리포트로 변환 (빈 탭 방지)
+      if (nightResult && Array.isArray(nightResult.reports)) {
+        for (const r of nightResult.reports) {
+          if (r && r.line) {
+            newReports.push({ day: nextDay, npcId: null, text: r.line });
+          }
+        }
+      }
     }
-    
-    // 상태 반영
+
+    // ─── Phase 4: 상태 반영 + UI 갱신 ───
     state.reports.push(...newReports);
     state.rumors.push(...newRumors);
     state.quests.push(...newQuests);
@@ -329,37 +289,15 @@ ${targetRumors.map(r => '- ' + r.text).join('\n')}
     state.phase = 'morning';
     state.timeOfDay = 0.3;
     state.activeTab = 'report';
-    
+
     showNotification(`🌅 ${nextDay}일차 아침이 밝았어요!`);
     renderTabs();
     renderContent();
     renderCounts();
     renderNpcList();
-    
-    // 스토리 모달 표시
-    if (isStoryTriggerDay) {
-      // 증거 이미지 체인: 사진관 쇼윈도 → 빈 선반 → 장부 → 스토리 모달
-      setTimeout(() => {
-        showEvidencePopup('photostudio_window', '사진관 쇼윈도에 걸린 한 장의 사진...');
-      }, 500);
-      setTimeout(() => {
-        window.__closeEvidence();
-        setTimeout(() => showEvidencePopup('missing_book_shelf', '서점 선반에서 책 한 권이 사라졌다!'), 300);
-      }, 3500);
-      setTimeout(() => {
-        window.__closeEvidence();
-        setTimeout(() => showEvidencePopup('bamtol_ledger', '밤톨이 확인한 장부. 뭔가 이상하다...'), 300);
-      }, 6500);
-      setTimeout(() => {
-        window.__closeEvidence();
-        setTimeout(() => showStoryModal(BOOKSTORE_STORY.day2Opening.title, BOOKSTORE_STORY.day2Opening.body), 400);
-      }, 9500);
-    } else if (isQuestTriggerDay) {
-      setTimeout(() => showStoryModal(
-        '📖 야미가 당신을 찾아왔어요',
-        '야미의 꿈("독서 모임 만들기")이 분기점에 섰어요. 사건 탭에서 야미와 마주하고 직접 행동을 적어보세요.\n\n호감도가 높으면 야미가 먼저 속마음을 털어놓고, 낮으면 당신도 의심할 거예요.'
-      ), 800);
-    }
+
+    // 스토리 연출 하드코딩 제거됨. 엔진 autoOnStageEnter 가 증거팝업/스토리모달/퀘스트
+    // 전부 담당하며 UI 큐를 통해 순차 표시됨.
   } catch (err) {
     showNotification('시뮬레이션 오류가 발생했어요.');
     console.error(err);
@@ -401,41 +339,26 @@ JSON으로만 답해:
     quest.resolved = true;
     quest.result = data;
     quest.userAction = text.trim();
-    
-    // 스토리 퀘스트 해결 시 증거 팝업 체인
-    if (quest.isStory && quest.affinityRoute === 'high' && data.dreamAxis === 'forward') {
-      // 호감도 높음 + 성공 → 증거 1(예약증) + 증거 2(선반 밑 발견) 팝업
-      if (/장부|예약|확인/.test(text)) {
-        setTimeout(() => showEvidencePopup('book_reservation_slip', '증거 1: 야미의 예약증이 발견됐어요!'), 800);
-        setTimeout(() => {
-          window.__closeEvidence();
-          setTimeout(() => showEvidencePopup('missing_book_found', '증거 2: 선반 밑에서 사라진 책을 찾았어요!'), 400);
-        }, 3500);
-      } else if (/서점|뒤져|찾아/.test(text)) {
-        setTimeout(() => showEvidencePopup('missing_book_found', '밤톨과 함께 서점을 뒤지다가 찾았어요!'), 800);
-      } else {
-        setTimeout(() => showEvidencePopup('book_reservation_slip', '예약증이 발견됐어요!'), 800);
-      }
-    }
-    
-    // 스토리 퀘스트 해결 시 스토리 단계 완료
-    if (quest.isStory && state.storyStage === 'quest_active') {
-      state.storyStage = 'resolved';
-      // 결과에 따른 스토리 에필로그
-      setTimeout(() => {
-        let epilogueTitle, epilogueBody;
-        if (data.dreamAxis === 'forward') {
-          epilogueTitle = '🌸 사건이 해결됐어요';
-          epilogueBody = `야미의 독서 모임이 다시 길을 찾았어요.\n\n${data.resultLabel}\n\n동네는 다시 평화를 찾았고, 밤톨도 자신의 성급함을 반성하게 됐어요.`;
-        } else if (data.dreamAxis === 'backward') {
-          epilogueTitle = '🥀 야미의 꿈이 흔들렸어요';
-          epilogueBody = `오해는 풀리지 않았고, 야미의 독서 모임은 당분간 미뤄졌어요.\n\n${data.resultLabel}\n\n하지만 세계는 계속 돌아가요. 언젠가 다시 기회가 올지도...`;
-        } else {
-          epilogueTitle = '🌾 사건이 한 걸음 비껴갔어요';
-          epilogueBody = `직접적 해결은 없었지만, 야미는 다른 길을 찾을 준비를 해요.\n\n${data.resultLabel}`;
+
+    // [8단계 교체] 기존 스토리 퀘스트 해결 후 처리:
+    //   - 증거 팝업 체인 (book_reservation_slip 등 제거된 에셋 참조) 삭제
+    //   - state.storyStage = 'resolved' 수동 갱신 삭제
+    //   - dreamAxis 기반 에필로그 모달 (3종) 삭제
+    // 대체:
+    //   - 엔진에 해결된 퀘스트 표시 (resolvedQuests)
+    //   - checkStageTransition 호출 → quest_active → resolved 전환 시 ending_scene
+    //     autoOnStageEnter 가 자동 발동 (증거 팝업 + 호감도 + 엔딩 모달 전부 시나리오 데이터 기반)
+    if (quest.isStory && window.scenarioEngine) {
+      try {
+        // 엔진 resolvedQuests 에 추가 (transitions.conditions 의 questResolved 체크용)
+        if (window.scenarioEngine.state && window.scenarioEngine.state.resolvedQuests) {
+          window.scenarioEngine.state.resolvedQuests.add(quest.id);
         }
-        showStoryModal(epilogueTitle, epilogueBody);
-      }, data.dreamAxis === 'forward' ? 7000 : 1500);
+        // 단계 전환 체크 → resolved 로 가면 ending_scene autoOnStageEnter 자동 발동
+        window.scenarioEngine.checkStageTransition();
+      } catch (err) {
+        console.error('[submitQuestAction] 엔진 연동 에러 (무시):', err);
+      }
     }
     
     showNotification(`✨ ${data.resultLabel}`);
