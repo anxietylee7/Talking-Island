@@ -154,8 +154,13 @@ function showConfirmModal(title, body, onYes, yesLabel = '예', noLabel = '아�
   const modal = document.createElement('div');
   modal.id = 'confirm-modal';
   modal.className = 'story-modal show';
+  // 인라인 스타일로 오버레이 레이아웃 강제 (CSS에 .story-modal 클래스 규칙이 없어서)
+  modal.style.cssText =
+    'position: fixed; inset: 0; z-index: 600;' +
+    'background: rgba(0,0,0,0.4); backdrop-filter: blur(6px);' +
+    'display: flex; align-items: center; justify-content: center; padding: 20px;';
   modal.innerHTML = `
-    <div class="story-modal-content" style="max-width: 440px;">
+    <div class="story-modal-content" style="background: white; border-radius: 24px; padding: 28px 24px; max-width: 440px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.2); border: 3px solid #fde8ec;">
       <h2 style="margin: 0 0 12px; font-size: 20px; color: #3a2a1a;">${title}</h2>
       <p style="margin: 0 0 20px; line-height: 1.6; color: #555; white-space: pre-line;">${body}</p>
       <div style="display: flex; gap: 12px; justify-content: flex-end;">
