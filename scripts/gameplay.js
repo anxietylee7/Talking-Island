@@ -307,6 +307,7 @@ ${targetRumors.map(r => '- ' + r.text).join('\n')}
     renderContent();
     renderCounts();
     renderNpcList();
+    renderQuestBanner(); // [9단계] 밤 지난 후 배너 갱신 (단계 전환됐을 수 있음)
 
     // 스토리 연출 하드코딩 제거됨. 엔진 autoOnStageEnter 가 증거팝업/스토리모달/퀘스트
     // 전부 담당하며 UI 큐를 통해 순차 표시됨.
@@ -318,71 +319,9 @@ ${targetRumors.map(r => '- ' + r.text).join('\n')}
   }
 }
 
-async function submitQuestAction(text) {
-  if (!text.trim() || !state.activeQuestId || state.loading) return;
-  const quest = state.quests.find(q => q.id == state.activeQuestId);
-  if (!quest) return;
-  const npc = state.npcs.find(n => n.id === quest.npcId);
-  
-  setLoading(true, '상황을 판정하는 중...');
-  try {
-    const prompt = `유저의 자유 행동을 3축으로 판정해.
-
-상황: ${quest.situation}
-
-NPC: ${npc.name} (꿈=${npc.dream}, 꿈진행도=${npc.dreamProgress}%, 호감도=${npc.affinity}/100)
-소문: ${(quest.relatedRumors && quest.relatedRumors.length > 0) ? quest.relatedRumors.join(' / ') : '(없음)'}
-
-유저 행동: "${text.trim()}"
-
-JSON으로만 답해:
-{
-  "narrative": "2-3문장. 귀여운 톤. NPC 반응 포함.",
-  "dreamAxis": "forward" | "detour" | "backward",
-  "dreamDelta": -30~+30 숫자,
-  "rumorAxis": "resolve" | "ignore" | "worsen",
-  "affinityDelta": -20~+20 숫자,
-  "resultLabel": "결과 요약 (20자 이내)"
-}`;
-    const data = await callClaude('너는 자유행동 판정 시스템이야.', prompt, true);
-    
-    npc.dreamProgress = Math.max(0, Math.min(100, npc.dreamProgress + data.dreamDelta));
-    npc.affinity = Math.max(0, Math.min(100, npc.affinity + data.affinityDelta));
-    quest.resolved = true;
-    quest.result = data;
-    quest.userAction = text.trim();
-
-    // [8단계 교체] 기존 스토리 퀘스트 해결 후 처리:
-    //   - 증거 팝업 체인 (book_reservation_slip 등 제거된 에셋 참조) 삭제
-    //   - state.storyStage = 'resolved' 수동 갱신 삭제
-    //   - dreamAxis 기반 에필로그 모달 (3종) 삭제
-    // 대체:
-    //   - 엔진에 해결된 퀘스트 표시 (resolvedQuests)
-    //   - checkStageTransition 호출 → quest_active → resolved 전환 시 ending_scene
-    //     autoOnStageEnter 가 자동 발동 (증거 팝업 + 호감도 + 엔딩 모달 전부 시나리오 데이터 기반)
-    if (quest.isStory && window.scenarioEngine) {
-      try {
-        // 엔진 resolvedQuests 에 추가 (transitions.conditions 의 questResolved 체크용)
-        if (window.scenarioEngine.state && window.scenarioEngine.state.resolvedQuests) {
-          window.scenarioEngine.state.resolvedQuests.add(quest.id);
-        }
-        // 단계 전환 체크 → resolved 로 가면 ending_scene autoOnStageEnter 자동 발동
-        window.scenarioEngine.checkStageTransition();
-      } catch (err) {
-        console.error('[submitQuestAction] 엔진 연동 에러 (무시):', err);
-      }
-    }
-    
-    showNotification(`✨ ${data.resultLabel}`);
-    renderNpcList();
-    renderContent();
-    renderCounts();
-  } catch (err) {
-    showNotification('판정 오류가 발생했어요.');
-  } finally {
-    setLoading(false);
-  }
-}
+// [9단계 제거] submitQuestAction — 자유 행동 입력 방식 폐기.
+// 이제 퀘스트 해결은 엔진의 evaluateQuestMilestones 가 zeta 대화창 닫을 때 판정함.
+// 스토리 퀘스트 해결 → resolvedQuests 추가 → checkStageTransition 까지 엔진 내부에서 처리.
 
 // =========================================================
 // NPC 카드/대화창용 헬퍼 — natural 이미지 우선, 없으면 이모지 폴백
@@ -415,6 +354,52 @@ function renderCounts() {
   } else {
     qc.style.display = 'none';
     qd.style.display = 'none';
+  }
+  // [9단계] 배너도 같이 갱신
+  renderQuestBanner();
+}
+
+// [9단계] 화면 상단 퀘스트 배너 렌더링.
+// 엔진의 getCurrentBannerText 가 현재 단계 + 마일스톤 상태 기반으로 텍스트를 줌.
+// text 가 빈 문자열이면 배너를 완전히 숨긴다.
+function renderQuestBanner() {
+  const banner = document.getElementById('quest-banner');
+  if (!banner) return;
+  if (!window.scenarioEngine || typeof window.scenarioEngine.getCurrentBannerText !== 'function') {
+    banner.style.display = 'none';
+    return;
+  }
+  let info;
+  try {
+    info = window.scenarioEngine.getCurrentBannerText();
+  } catch (err) {
+    console.error('[banner] getCurrentBannerText 에러:', err);
+    banner.style.display = 'none';
+    return;
+  }
+  if (!info || !info.text) {
+    banner.style.display = 'none';
+    return;
+  }
+  banner.style.display = 'flex';
+  const textEl = banner.querySelector('.banner-text');
+  const progressEl = banner.querySelector('.banner-progress');
+  if (textEl) textEl.textContent = info.text;
+  if (progressEl) {
+    if (info.threshold > 0) {
+      progressEl.textContent = `(${info.achieved}/${info.threshold})`;
+      progressEl.style.display = 'inline';
+    } else {
+      progressEl.style.display = 'none';
+    }
+  }
+  // 텍스트 바뀜 감지용: 이전 값 저장해서 달라졌으면 깜빡 효과
+  const prevText = banner.dataset.prevText || '';
+  if (prevText !== info.text) {
+    banner.classList.remove('highlight');
+    void banner.offsetWidth; // reflow 강제
+    banner.classList.add('highlight');
+    banner.dataset.prevText = info.text;
   }
 }
 
@@ -578,6 +563,37 @@ function renderContent() {
       const q = state.quests.find(x => x.id == state.activeQuestId);
       if (!q) { state.activeQuestId = null; renderContent(); return; }
       const npc = state.npcs.find(n => n.id === q.npcId);
+      // [9단계] 스토리 퀘스트일 때 마일스톤 진행도 + 달성 체크리스트 표시
+      let milestonesHtml = '';
+      let guidanceHtml = '';
+      if (q.isStory && window.scenarioEngine && window.scenarioEngine.scenario) {
+        const qdef = (window.scenarioEngine.scenario.quests || {})[q.id];
+        if (qdef && Array.isArray(qdef.milestones)) {
+          const achievedSet = (window.scenarioEngine.state.questMilestones || {})[q.id] || new Set();
+          const total = qdef.milestones.length;
+          const achievedCount = achievedSet.size;
+          const threshold = qdef.resolveThreshold || total;
+          milestonesHtml = `
+            <div class="quest-milestones">
+              <div class="milestone-header">진행도 ${achievedCount}/${threshold}</div>
+              ${qdef.milestones.map(m => {
+                const done = achievedSet.has(m.id);
+                return `<div class="milestone-row ${done ? 'done' : ''}">
+                  <span class="milestone-check">${done ? '✅' : '⬜'}</span>
+                  <span class="milestone-text">${escapeHtml(m.description)}</span>
+                </div>`;
+              }).join('')}
+            </div>`;
+        }
+        if (!q.resolved) {
+          const targetNpc = state.npcs.find(n => n.id === q.npcId);
+          guidanceHtml = `
+            <div class="quest-guidance">
+              💬 ${escapeHtml(targetNpc?.name || '주민')}와 대화하거나, 관련 주민들과 이야기하며 오해를 풀어보세요.
+            </div>`;
+        }
+      }
+
       el.innerHTML = `
         <button class="btn btn-small" id="back-quest" style="margin-bottom:10px">← 목록으로</button>
         <div class="quest-detail">
@@ -593,29 +609,14 @@ function renderContent() {
             </div>
           ` : ''}
         </div>
+        ${milestonesHtml}
         ${q.resolved ? `
-          <div class="quest-action">당신의 행동: "${escapeHtml(q.userAction)}"</div>
           <div class="quest-result">
-            <div>${escapeHtml(q.result.narrative)}</div>
-            <div class="quest-axes">
-              <span class="axis-chip">꿈: ${q.result.dreamAxis === 'forward' ? '🌱 전진' : q.result.dreamAxis === 'backward' ? '🥀 후퇴' : '🌾 우회'} (${q.result.dreamDelta > 0 ? '+' : ''}${q.result.dreamDelta})</span>
-              <span class="axis-chip">소문: ${q.result.rumorAxis === 'resolve' ? '🕊️ 해소' : q.result.rumorAxis === 'worsen' ? '🔥 악화' : '💭 무시'}</span>
-              <span class="axis-chip">관계: ${q.result.affinityDelta > 0 ? '💗' : q.result.affinityDelta < 0 ? '💔' : '❤️'} ${q.result.affinityDelta > 0 ? '+' : ''}${q.result.affinityDelta}</span>
-            </div>
+            <div>${escapeHtml((q.result && q.result.narrative) || '오해가 풀렸어요.')}</div>
           </div>
-        ` : `
-          <div style="font-size:11px; color:#9c7a5a; margin-bottom:4px">어떻게 할까요? (비워두면 방관)</div>
-          <textarea class="quest-input" id="quest-input" placeholder="예: 밤톨에게 장부를 함께 확인하자고 설득한다 / 함께 서점을 뒤져본다 / 차카에게 사진의 맥락을 물어본다"></textarea>
-          <button class="btn btn-primary" id="quest-submit" style="width:100%; margin-top:8px">행동하기</button>
-        `}
+        ` : guidanceHtml}
       `;
       document.getElementById('back-quest').addEventListener('click', () => { state.activeQuestId = null; renderContent(); });
-      if (!q.resolved) {
-        document.getElementById('quest-submit').addEventListener('click', () => {
-          const v = document.getElementById('quest-input').value;
-          submitQuestAction(v);
-        });
-      }
     } else {
       const quests = [...state.quests].reverse();
       // [8단계] 증거 보관함 UI 제거 (유저 노출 안 함). ASSET_SLOTS/ASSET_META/assetRegistry
