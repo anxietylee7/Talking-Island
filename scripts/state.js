@@ -775,9 +775,15 @@ window.__closeZeta = function() {
     // fire-and-forget. 판정 끝나면 배너 갱신 트리거.
     window.scenarioEngine.evaluateQuestMilestones(closingNpcId, closingHistory)
       .then(function (result) {
-        if (result && result.newlyAchieved && result.newlyAchieved.length > 0) {
+        if (result && result.newlyAchievedDetails && result.newlyAchievedDetails.length > 0) {
           console.log('[state] 마일스톤 달성:', result.newlyAchieved);
-          showNotification('✨ 대화로 한 발짝 나아갔어요');
+          // [9단계] 구체적 알림 — 어떤 마일스톤이 달성됐는지 명시.
+          // 여러 개 동시 달성되면 순차 표시 (각각 3.5초).
+          result.newlyAchievedDetails.forEach(function (m, i) {
+            setTimeout(function () {
+              showNotification('✨ 달성: ' + m.description);
+            }, i * 3500);
+          });
         }
         // 배너 갱신 (정의돼 있으면)
         if (typeof renderQuestBanner === 'function') {
@@ -938,14 +944,20 @@ function setLoading(flag, msg = '불러오는 중...') {
 // =========================================================
 // Claude API 호출
 // =========================================================
-async function callClaude(systemPrompt, userPromptOrMessages, expectJSON = false) {
+// [9단계 수정] 4번째 인자 options 추가. { temperature: 0~2 } 형태.
+//   temperature 미지정 시 서버(api/chat.js)의 기본값 0.85 유지.
+//   판정처럼 일관성이 중요한 호출은 낮은 값(예: 0.2) 전달.
+async function callClaude(systemPrompt, userPromptOrMessages, expectJSON = false, options) {
   try {
-    console.log('[callClaude] start', expectJSON ? 'JSON' : 'text');
+    console.log('[callClaude] start', expectJSON ? 'JSON' : 'text', options && options.temperature !== undefined ? '(temp=' + options.temperature + ')' : '');
     // Vercel 서버리스 함수 경유 (API 키는 서버 환경변수에 보관)
     const body = {
       system: systemPrompt,
       max_tokens: 1000,
     };
+    if (options && typeof options.temperature === 'number') {
+      body.temperature = options.temperature;
+    }
     if (Array.isArray(userPromptOrMessages)) {
       body.messages = userPromptOrMessages;
     } else {
