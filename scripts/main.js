@@ -104,8 +104,40 @@ window.__introRollGacha = async function() {
   }
 };
 
-window.__enterVillage = function() {
+window.__enterVillage = async function() {
   console.log('[intro] enter village clicked, npc count:', state.npcs.length);
+  
+  // 🔧 먼저 GLB 모델 프리로드 (로딩 UI 표시)
+  const actions = document.getElementById('gacha-result-actions');
+  const loading = document.getElementById('intro-loading');
+  if (actions) actions.innerHTML = '';  // "마을로 입장하기" 버튼 숨김
+  if (loading) {
+    loading.classList.add('show');
+    loading.style.display = 'flex';
+    const loadingText = loading.querySelector('span');
+    if (loadingText) loadingText.textContent = '캐릭터 모델을 불러오는 중... (0/6)';
+  }
+  
+  try {
+    if (window.__preloadAllGltfModels) {
+      await window.__preloadAllGltfModels((loaded, total, name) => {
+        if (loading) {
+          const loadingText = loading.querySelector('span');
+          if (loadingText) loadingText.textContent = `캐릭터 모델을 불러오는 중... (${loaded}/${total})`;
+        }
+      });
+    }
+  } catch (err) {
+    console.error('[intro] preload error:', err);
+    // 프리로드 실패해도 진행 (프리미티브로 폴백)
+  }
+  
+  if (loading) {
+    loading.classList.remove('show');
+    loading.style.display = 'none';
+  }
+  
+  // 🔧 이제 인트로 페이드 아웃 + 마을 진입
   const intro = document.getElementById('intro-screen');
   intro.classList.add('fade-out');
   setTimeout(() => {
