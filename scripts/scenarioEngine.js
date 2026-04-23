@@ -17,8 +17,13 @@
 //                  * showEvidencePopup / showStoryModal 이 큐 경유로 변경
 //                  * state.js 의 __closeEvidence / __closeStoryModal 을 wrap 해서
 //                    사용자가 닫을 때마다 다음 항목 표시. state.js 자체는 무수정.
+//   [7단계 완료] getDialogueContext(작업 5) 실제 구현
+//                + seed effect 실제 AI 호출 (비동기, Q4=A). 결과는 seedReports 에 저장
+//                + engineState.seedReports 신규 필드 (단계 전환 시 초기화)
+//                + _generateDistortionLine 신규 (_generateSceneLine 과 별개, truth/distortion 활용)
+//                + state.js __zetaSend 에서 getDialogueContext concat (Q1=C, 기존 하드코딩 유지)
+//                + gameplay.js sendChatMessage 에서 getDialogueContext concat (Q1=C)
 //   [이후 예정]
-//     7단계: getDialogueContext(작업 5) + state.js 연결 + seed effect AI 호출 구현
 //     8단계: gameplay.js의 advanceToNightAndMorning 완전 교체 + 기존 하드코딩 제거
 //
 // ⚠️ 현재 상태: gameplay.js 의 selectNpc 가 엔진의 handleNpcApproach 를 호출함 (6단계).
@@ -84,6 +89,12 @@
     // 키: npcId, 값: 주입된 문자열
     // 설계 질문 5.3 의 제안대로 "단계 전환 시 초기화" → transitionStage 에서 비움.
     injectedContext: {},
+
+    // [7단계 추가] seed effect AI 가 비동기로 생성한 장면 저장소
+    // 구조: { npcId: [{ seedId, line, generatedAt }] }
+    // 어느 NPC 의 "최근 일어난 일"인지 추적 — seed 정의에 targetNpcIds 필드로 지정.
+    // 단계 전환 시 초기화 (오래된 장면이 다음 단계까지 새어나가지 않게).
+    seedReports: {},
   };
 
 
@@ -106,6 +117,7 @@
     engineState.resolvedQuests.clear();
     engineState.flags = {};
     engineState.injectedContext = {};
+    engineState.seedReports = {};
 
     console.log(
       '[engine] scenario loaded:',
@@ -195,6 +207,7 @@
   function _transitionStage(newStage) {
     engineState.currentStage = newStage;
     engineState.injectedContext = {};
+    engineState.seedReports = {}; // [7단계] 다음 단계로 오래된 장면 새지 않게 초기화
     console.log('[engine] stage transitioned to:', newStage);
 
     // 새 단계 낮 이벤트 활성화
@@ -477,6 +490,48 @@
         seedId: seed.id,
         sceneOriginal: seed.scene || '',
         line: (seed.scene || '').slice(0, 40) + '…',
+        aiFailed: true,
+      };
+    }
+  }
+
+
+  // [7단계 추가] 낮 이벤트 seed 용 AI 호출.
+  // _generateSceneLine 와 달리 truth/distortion 쌍을 받아서 왜곡이 일어나는 대화를 생성.
+  // seedDef 형식: { scene, truth, distortion, ... }
+  // 반환: { seedId, line, aiFailed }
+  async function _generateDistortionLine(seedDef, seedId) {
+    if (typeof callClaude !== 'function') {
+      console.warn('[engine] callClaude 미정의. seedId=' + seedId);
+      return { seedId: seedId, line: seedDef.distortion || seedDef.scene || '', aiFailed: true };
+    }
+
+    const systemPrompt =
+      '너는 마을에서 일어난 NPC 간 대화를 기록하는 관찰자다. ' +
+      '다음 규칙을 지켜라:\n' +
+      '1. 한국어로 2~3문장 이내.\n' +
+      '2. 주어진 장면이 어떻게 진행되는지, 그리고 그 과정에서 사실이 어떻게 왜곡되는지를 묘사한다. ' +
+      '"실제 사실"과 "대화 중 왜곡된 내용"이 따로 주어지므로 둘의 차이가 드러나게 써라.\n' +
+      '3. 담담한 관찰 톤. 감정 해설, 추측, 원문에 없는 인물 추가 금지.\n' +
+      '4. 주어를 분명히 쓴다 (예: "차카가 말했다...", "밤톨은 듣다가...").\n' +
+      '5. 원문 그대로 복사하지 말고 자연스러운 문장으로 다듬어라.';
+
+    const userPrompt =
+      '장면: ' + (seedDef.scene || '') + '\n' +
+      '실제 사실: ' + (seedDef.truth || '(없음)') + '\n' +
+      '대화 중 왜곡된 내용: ' + (seedDef.distortion || '(없음)') + '\n\n' +
+      '위 정보를 바탕으로 장면을 기록해줘.';
+
+    try {
+      const text = await callClaude(systemPrompt, userPrompt, false);
+      const line = (text || '').trim();
+      if (!line) throw new Error('empty response');
+      return { seedId: seedId, line: line, aiFailed: false };
+    } catch (err) {
+      console.warn('[engine] distortion seed AI 실패. fallback. seedId=' + seedId, err);
+      return {
+        seedId: seedId,
+        line: seedDef.distortion || seedDef.scene || '',
         aiFailed: true,
       };
     }
@@ -792,14 +847,47 @@
             break;
 
           case 'seed':
-            // [6단계는 경고만. 실제 AI 호출은 7단계.]
-            // chaka_bamtol_distortion 의 distortion_seed 처리 등이 여기 해당.
-            // 현재는 로그만 남기고 통과시킨다. 다른 effects 는 정상 실행됨.
-            console.log(
-              '[engine][effect] seed effect 수신 (7단계에서 AI 호출 구현 예정):',
-              fx.seedId || '(id 없음)'
-            );
-            log.push({ type: fx.type, seedId: fx.seedId, status: 'deferred_to_step7' });
+            // [7단계 구현] 비동기 AI 호출로 왜곡 장면 생성.
+            // 결과는 engineState.seedReports 에 저장되어 getDialogueContext 가 후속 대화에서 활용.
+            // 이 effect 는 await 하지 않는다 (Q4=A 비동기 결정). 즉시 다른 effects 로 진행.
+            // 실패해도 다른 effects 에 영향 없음.
+            {
+              const seedId = fx.seedId;
+              const scenario = engineState.scenario;
+              const seedDef = scenario && scenario.eventSeeds ? scenario.eventSeeds[seedId] : null;
+              if (!seedDef) {
+                console.warn('[engine][effect] seed: 정의 없음', seedId);
+                log.push({ type: fx.type, seedId: seedId, status: 'seed_not_found' });
+                break;
+              }
+              // 대상 NPC 목록: seed 정의에 targetNpcIds 있으면 사용, 없으면 context.source 에서 추측하지 말고
+              // 시나리오 작성자가 명시하도록 강제 (지금 bookstore.js 의 distortion_seed 는 targetNpcIds 없음 → 기본값 사용)
+              const targetNpcIds = Array.isArray(seedDef.targetNpcIds) && seedDef.targetNpcIds.length > 0
+                ? seedDef.targetNpcIds
+                : ['chaka', 'bamtol', 'yami']; // 기본값: 주요 스토리 NPC 3명
+              console.log('[engine][effect] seed 비동기 시작:', seedId, '→ NPCs:', targetNpcIds);
+              log.push({ type: fx.type, seedId: seedId, status: 'started_async', targetNpcIds: targetNpcIds });
+
+              // Fire-and-forget: 결과는 나중에 seedReports 에 들어감.
+              _generateDistortionLine(seedDef, seedId)
+                .then(function (result) {
+                  if (!result || !result.line) return;
+                  const report = {
+                    seedId: seedId,
+                    line: result.line,
+                    generatedAt: Date.now(),
+                  };
+                  for (const nid of targetNpcIds) {
+                    if (!engineState.seedReports[nid]) engineState.seedReports[nid] = [];
+                    engineState.seedReports[nid].push(report);
+                  }
+                  console.log('[engine][effect] seed 완료:', seedId, '→ line:', result.line);
+                })
+                .catch(function (err) {
+                  // 실패해도 게임 진행에 영향 없음 (다른 effects 는 이미 실행됨)
+                  console.warn('[engine][effect] seed 실패 (무시):', seedId, err);
+                });
+            }
             break;
 
           default:
@@ -819,15 +907,55 @@
     return log;
   }
 
-  // 작업 5: 대화 컨텍스트 주입
-  // 언제 호출: 유저가 NPC와 대화 시작할 때 (state.js __zetaSend 또는 gameplay.js)
-  // 해당 NPC의 base + 현재 단계 배경 + injectedContext 를 조합해 문자열로 반환.
+  // 작업 5: 대화 컨텍스트 주입 [7단계 구현]
+  // 언제 호출: state.js 의 __zetaSend, gameplay.js 의 sendChatMessage 가
+  //            callClaude 호출 직전에 호출해서 AI 프롬프트에 concat 한다.
+  //
+  // 반환값: AI 프롬프트에 붙일 문자열. 아무것도 없으면 빈 문자열.
+  //
+  // 조합 규칙 (bookstore.js 의 npcDialogueContext 기반):
+  //   1) npcDialogueContext[npcId].base           — 항상 포함
+  //   2) npcDialogueContext[npcId].stages[currentStage] — 현재 단계 배경
+  //   3) engineState.injectedContext[npcId]       — 낮 이벤트로 쌓인 임시 배경 (단계 전환 시 비워짐)
+  //   4) engineState.seedReports[npcId]          — 비동기 seed AI 가 생성한 왜곡 장면 (준비된 것만)
+  //
+  // 빈 섹션은 자동으로 생략. 섹션 간 \n 로 구분.
+  // 시나리오 정의가 없거나 NPC가 시나리오에 안 올라와 있으면 빈 문자열 반환 (일반 NPC 케이스).
   function getDialogueContext(npcId) {
-    console.log(
-      '[engine][stub] getDialogueContext 호출됨. npcId=' + npcId +
-      ' (7단계에서 실제 구현 예정)'
-    );
-    return ''; // 실제 구현 시 AI 프롬프트에 붙일 배경 문자열 반환
+    if (!npcId) return '';
+    const scenario = engineState.scenario;
+    if (!scenario || !scenario.npcDialogueContext) return '';
+
+    const def = scenario.npcDialogueContext[npcId];
+    if (!def) return ''; // 일반 NPC (솜이, 루루 등)는 시나리오에 안 올라와 있음 → 빈 문자열
+
+    const parts = [];
+
+    // 1) base
+    if (def.base) parts.push(def.base);
+
+    // 2) 현재 단계 배경
+    const stageText = def.stages ? (def.stages[engineState.currentStage] || '') : '';
+    if (stageText) parts.push(stageText);
+
+    // 3) 낮 이벤트로 쌓인 임시 배경
+    const inj = engineState.injectedContext[npcId];
+    if (inj) parts.push(inj);
+
+    // 4) seed 가 비동기로 생성한 왜곡 장면 (도착한 것만)
+    // seedReports 는 npcId 별 배열. 해당 NPC 에 관련된 장면만 누적.
+    const reports = engineState.seedReports[npcId];
+    if (Array.isArray(reports) && reports.length > 0) {
+      // 너무 오래된 것은 잘라서 최근 3개만 주입 (프롬프트 폭발 방지)
+      const recent = reports.slice(-3).map(function (r) { return r.line; }).filter(Boolean);
+      if (recent.length > 0) {
+        parts.push('[최근 일어난 일] ' + recent.join(' '));
+      }
+    }
+
+    if (parts.length === 0) return '';
+    // 호출자가 기존 프롬프트 뒤에 그냥 concat 하기 좋게 앞에 구분 \n\n 추가.
+    return '\n\n[시나리오 엔진 제공 배경]\n' + parts.join('\n');
   }
 
 
