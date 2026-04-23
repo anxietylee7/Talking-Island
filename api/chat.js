@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { system, user, messages: clientMessages, max_tokens } = req.body || {};
+    const { system, user, messages: clientMessages, max_tokens, temperature } = req.body || {};
     
     // 메시지 배열 구성
     const messages = [];
@@ -51,6 +51,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing messages or user field' });
     }
 
+    // [9단계] 클라이언트가 temperature 보냈으면 그 값 사용. 아니면 기본 0.85.
+    //         판정 같은 결정론적 호출은 낮은 값(0.2) 을 받아서 가변성을 줄인다.
+    const finalTemperature = (typeof temperature === 'number' && temperature >= 0 && temperature <= 2)
+      ? temperature
+      : 0.85;
+
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -61,7 +67,7 @@ export default async function handler(req, res) {
         model: 'gpt-4.1-mini',
         messages,
         max_tokens: typeof max_tokens === 'number' ? max_tokens : 1000,
-        temperature: 0.85,
+        temperature: finalTemperature,
       }),
     });
 
