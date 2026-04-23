@@ -90,13 +90,25 @@ async function sendChatMessage(text) {
 - 최근 동네 소문을 꺼낼 수도 있음${storyContext}
 
 최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
-    
+
+    // [7단계] 시나리오 엔진이 제공하는 단계별/임시 배경 concat. Q1=C (하드코딩 유지, 엔진 출력 추가).
+    // 일반 NPC (솜이/루루 등) 는 엔진이 빈 문자열 반환하므로 영향 없음.
+    let engineContext = '';
+    try {
+      if (window.scenarioEngine && typeof window.scenarioEngine.getDialogueContext === 'function') {
+        engineContext = window.scenarioEngine.getDialogueContext(npcId) || '';
+      }
+    } catch (err) {
+      console.error('[sendChatMessage] getDialogueContext 에러 (무시):', err);
+    }
+    const systemFinal = system + engineContext;
+
     // history를 OpenAI messages 배열로 변환
     const messagesArr = history.slice(-6).map(m => ({
       role: m.role === 'user' ? 'user' : 'assistant',
       content: m.text,
     }));
-    const response = await callClaude(system, messagesArr);
+    const response = await callClaude(systemFinal, messagesArr);
     
     history.push({ role: 'npc', text: response });
     state.chatHistory[npcId] = history;
