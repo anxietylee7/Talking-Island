@@ -45,7 +45,7 @@
     <div class="badge badge-mint" id="day-badge">Day 1 · ☀️ 아침</div>
     <div id="time-bar"><div id="time-bar-fill" style="width: 20%"></div></div>
     <div class="badge badge-mint" id="npc-count">주민 0명</div>
-    <div class="badge badge-peach" id="quest-count" style="display:none">사건 0건</div>
+    <div class="badge badge-peach" id="quest-count" style="display:none">퀘스트 0건</div>
   </div>
 </div>
 
@@ -62,14 +62,15 @@
     <button data-tab="chat" class="active">💬 대화</button>
     <button data-tab="report">📜 리포트</button>
     <button data-tab="board">📢 소문</button>
-    <button data-tab="quest">📖 사건<span class="dot" id="quest-dot" style="display:none"></span></button>
+    <button data-tab="quest">📖 퀘스트<span class="dot" id="quest-dot" style="display:none"></span></button>
   </div>
   <div class="content-area" id="tab-content"></div>
 </div>
 
 <div id="notification"></div>
 
-<button id="asset-btn" onclick="window.__openAssets && window.__openAssets()">🖼️ 이미지</button>
+<!-- [8단계] 이미지 업로드 UI 제거됨. 유저는 이 버튼 및 모달에 접근 불가.
+     내부 assetRegistry / ASSET_SLOTS / ASSET_META 는 유지되어 증거 팝업 등에서 정상 사용. -->
 
 <div id="story-modal">
   <div class="story-modal-inner">
@@ -111,26 +112,8 @@
   </div>
 </div>
 
-<!-- 이미지 업로드 모달 -->
-<div id="asset-modal">
-  <div class="asset-inner">
-    <div class="asset-title">🖼️ 이미지 에셋 관리</div>
-    <div class="asset-desc">
-      Gemini로 생성한 NPC 표정 및 증거 사진을 업로드하세요. 파일명을 보고 자동으로 해당 슬롯에 들어갑니다.<br>
-      <b>여러 파일을 한번에 드래그</b>해도 됩니다.
-    </div>
-    <div class="asset-dropzone" id="asset-dropzone">
-      📁 여기에 이미지 파일을 드롭하거나 클릭해서 선택하세요<br>
-      <span style="font-size:10px; color:#9c7a5a">예: chaka_natural.png, yami_sad.png, bamtol_ledger.png...</span>
-    </div>
-    <input type="file" id="asset-file" multiple accept="image/*" style="display:none" />
-    <div style="font-size:12px; font-weight:700; color:#8b5a2b; margin-bottom:6px">NPC 표정 (15장)</div>
-    <div class="asset-grid" id="asset-grid-npc"></div>
-    <div style="font-size:12px; font-weight:700; color:#8b5a2b; margin:14px 0 6px">증거/연출 사진 (6장)</div>
-    <div class="asset-grid" id="asset-grid-evidence"></div>
-    <button class="asset-close" onclick="window.__closeAssets && window.__closeAssets()">닫기</button>
-  </div>
-</div>
+<!-- [8단계] 이미지 업로드 모달 제거됨 (유저 접근 차단). state.js 의 openAssets/closeAssets
+     함수 및 asset-modal 관련 로직은 호출처가 없어져 사문화됨 (삭제는 9단계 정리 부채). -->
 
 <div id="loading-overlay">
   <div class="loading-box">
