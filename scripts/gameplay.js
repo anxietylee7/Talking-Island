@@ -271,11 +271,23 @@ ${targetRumors.map(r => '- ' + r.text).join('\n')}
         } catch (e) {}
       }
     } else {
-      // 스토리 전환이 일어난 날: 엔진 씨앗 결과를 리포트로 변환 (빈 탭 방지)
+      // 스토리 전환이 일어난 날: 엔진 씨앗 결과를 리포트로 변환 (빈 탭 방지).
+      // [8단계 개선] 씨앗 정의의 primaryNpcId 를 리포트의 npcId 로 사용 → UI가 NPC 이모지/이름 찾을 수 있음.
+      // engineBeforeStage 는 Phase 1 이전 단계. 그 단계의 씨앗들을 조회해서 primaryNpcId 매핑.
       if (nightResult && Array.isArray(nightResult.reports)) {
+        let seedsLookup = [];
+        try {
+          const scen = window.scenarioEngine && window.scenarioEngine.scenario;
+          if (scen && scen.nightSeeds && engineBeforeStage && scen.nightSeeds[engineBeforeStage]) {
+            seedsLookup = scen.nightSeeds[engineBeforeStage];
+          }
+        } catch (e) { /* ignore */ }
+
         for (const r of nightResult.reports) {
           if (r && r.line) {
-            newReports.push({ day: nextDay, npcId: null, text: r.line });
+            const seedDef = seedsLookup.find(s => s.id === r.seedId);
+            const resolvedNpcId = seedDef && seedDef.primaryNpcId ? seedDef.primaryNpcId : null;
+            newReports.push({ day: nextDay, npcId: resolvedNpcId, text: r.line });
           }
         }
       }
@@ -519,8 +531,8 @@ function renderContent() {
       <div class="section-title">📜 아침 리포트 · Day ${state.day}</div>
       ${today.length === 0 ? '<div class="empty-state"><span class="big-emoji">☀️</span>아직 리포트가 없어요.<br>"밤으로" 버튼을 눌러 다음 날을 시작해보세요.</div>' : 
         today.map(r => {
-          const npc = state.npcs.find(n => n.id === r.npcId);
-          return `<div class="report-item"><div>${npc?.emoji || '❓'}</div><div>${escapeHtml(r.text)}</div></div>`;
+          const npc = r.npcId ? state.npcs.find(n => n.id === r.npcId) : null;
+          return `<div class="report-item"><div>${npc?.emoji || '📜'}</div><div>${escapeHtml(r.text)}</div></div>`;
         }).join('')
       }
       ${older.length > 0 ? `
@@ -528,8 +540,8 @@ function renderContent() {
           <summary style="cursor:pointer; font-size:11px; color:#9c7a5a">이전 리포트 보기</summary>
           <div style="margin-top:6px">
             ${older.map(r => {
-              const npc = state.npcs.find(n => n.id === r.npcId);
-              return `<div class="report-item" style="opacity:0.7; font-size:11px"><div>${npc?.emoji}</div><div><span style="color:#9c7a5a">Day ${r.day}:</span> ${escapeHtml(r.text)}</div></div>`;
+              const npc = r.npcId ? state.npcs.find(n => n.id === r.npcId) : null;
+              return `<div class="report-item" style="opacity:0.7; font-size:11px"><div>${npc?.emoji || '📜'}</div><div><span style="color:#9c7a5a">Day ${r.day}:</span> ${escapeHtml(r.text)}</div></div>`;
             }).join('')}
           </div>
         </details>
