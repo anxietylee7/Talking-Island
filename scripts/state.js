@@ -825,6 +825,19 @@ window.__zetaSend = async function() {
 - 호감도 낮으면 거리감 있게, 높으면 친근하게${storyContext}
 
 최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
+
+    // [7단계] 시나리오 엔진이 제공하는 단계별/임시 배경을 system 프롬프트 뒤에 concat.
+    // Q1=C 결정: 기존 하드코딩된 storyContext 는 유지하고 엔진 출력을 추가. 8단계에서 하드코딩 제거 예정.
+    // 엔진 로드 실패 / 일반 NPC 케이스에는 빈 문자열 반환되므로 영향 없음.
+    let engineContext = '';
+    try {
+      if (window.scenarioEngine && typeof window.scenarioEngine.getDialogueContext === 'function') {
+        engineContext = window.scenarioEngine.getDialogueContext(npcId) || '';
+      }
+    } catch (err) {
+      console.error('[zetaSend] getDialogueContext 에러 (무시):', err);
+    }
+    const systemFinal = system + engineContext;
     
     // history를 OpenAI messages 배열로 변환
     // user는 그대로, npc는 assistant로 매핑
@@ -832,7 +845,7 @@ window.__zetaSend = async function() {
       role: m.role === 'user' ? 'user' : 'assistant',
       content: m.text,
     }));
-    const rawResponse = await callClaude(system, messagesArr);
+    const rawResponse = await callClaude(systemFinal, messagesArr);
     
     // 감정 태그 제거한 깨끗한 응답
     const cleanResponse = rawResponse.replace(/\[감정:[a-z]+\]/gi, '').trim();
