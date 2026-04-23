@@ -599,3 +599,93 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   }
   #asset-btn:hover { transform: scale(1.03); }
+
+  /* =========================================================
+     [9단계] 퀘스트 배너 — 화면 상단 가운데 고정
+     getCurrentBannerText 가 준 텍스트를 표시. 빈 텍스트면 display:none.
+     ========================================================= */
+  #quest-banner {
+    position: absolute;
+    top: 66px;       /* #top-bar(top:12px, padding 10+10, 대략 52px 높이) 바로 아래 */
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #fff9e6, #fef3e7);
+    border: 2px solid #f4d484;
+    border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(180,130,40,0.15);
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b4423;
+    max-width: calc(100vw - 40px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 30;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  #quest-banner .banner-text { display: inline-block; }
+  #quest-banner .banner-progress {
+    display: inline-block;
+    font-size: 11px;
+    color: #b58b2a;
+    background: rgba(255,255,255,0.7);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  /* 배너 텍스트 바뀔 때 한 번 깜빡 */
+  #quest-banner.highlight {
+    animation: banner-pulse 0.9s ease;
+  }
+  @keyframes banner-pulse {
+    0%   { transform: translateX(-50%) scale(1);    box-shadow: 0 4px 16px rgba(180,130,40,0.15); }
+    35%  { transform: translateX(-50%) scale(1.04); box-shadow: 0 6px 24px rgba(245,190,80,0.45); }
+    100% { transform: translateX(-50%) scale(1);    box-shadow: 0 4px 16px rgba(180,130,40,0.15); }
+  }
+  /* 시뮬레이션 중일 땐 숨김 (침대 자는 동안) */
+  body.sim-locked #quest-banner { display: none !important; }
+
+  /* [9단계] 퀘스트 탭 — 마일스톤 진행도 체크리스트 */
+  .quest-milestones {
+    background: #fff9e6;
+    border: 1.5px solid #f4d484;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #6b4423;
+  }
+  .quest-milestones .milestone-header {
+    font-weight: 700;
+    color: #8b5a2b;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .quest-milestones .milestone-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 3px 0;
+    line-height: 1.4;
+  }
+  .quest-milestones .milestone-row.done .milestone-text {
+    color: #7a6851;
+  }
+  .quest-milestones .milestone-check {
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+  .quest-guidance {
+    background: #e8f4fd;
+    border: 1.5px solid #b4dcff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-top: 10px;
+    font-size: 11.5px;
+    color: #3a6891;
+    line-height: 1.5;
+  }
