@@ -460,6 +460,20 @@
   //
   // AI 호출 실패 시: 원본 scene 의 앞 40자를 fallback 으로 반환. 게임이 멈추지 않도록.
   async function _generateSceneLine(seed) {
+    // [8단계] publicSummary 가 정의돼 있으면 AI 호출 없이 바로 사용.
+    // 이유: 시나리오 작성자가 "플레이어에게 공개할 리포트 텍스트"를 직접 확정한 경우
+    //       AI 가 건드리면 스포일러가 섞이거나 톤이 바뀔 수 있어 그대로 쓰는 게 가장 안전.
+    //       API 호출 절약 + 결과 일관성 보장 효과.
+    if (typeof seed.publicSummary === 'string' && seed.publicSummary.trim()) {
+      return {
+        seedId: seed.id,
+        sceneOriginal: seed.scene || '',
+        line: seed.publicSummary.trim(),
+        aiFailed: false,
+        usedPublicSummary: true,
+      };
+    }
+
     // 안전: callClaude 미존재 (state.js 로드 전) 대비
     if (typeof callClaude !== 'function') {
       console.warn('[engine] callClaude 가 아직 정의되지 않음. seed=' + seed.id);
