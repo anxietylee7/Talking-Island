@@ -475,6 +475,7 @@ const ASSET_SLOTS = {
     'chaka_photo_evidence', 'bamtol_ledger', 'missing_book_shelf', 
     'photostudio_window', 'book_reservation_slip', 'bookclub_poster',
     'missing_book_found',
+    'yami_backpack', // 추가: 설계 신규 증거 (8단계에서 bamtol_ledger, book_reservation_slip 정리 예정)
   ],
 };
 
@@ -506,6 +507,7 @@ const ASSET_META = {
   book_reservation_slip: { emoji: '🎫', label: '야미 예약증' },
   bookclub_poster: { emoji: '📝', label: '독서모임 포스터' },
   missing_book_found: { emoji: '📖', label: '선반 밑 책' },
+  yami_backpack: { emoji: '🎒', label: '야미의 가방' }, // 추가: 설계 신규 증거
 };
 
 // 업로드된 이미지 저장 (key -> dataURL)
