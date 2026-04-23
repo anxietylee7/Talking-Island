@@ -105,6 +105,12 @@
     // 어느 NPC 의 "최근 일어난 일"인지 추적 — seed 정의에 targetNpcIds 필드로 지정.
     // 단계 전환 시 초기화 (오래된 장면이 다음 단계까지 새어나가지 않게).
     seedReports: {},
+
+    // [9단계 추가] 퀘스트별 달성된 마일스톤 추적
+    // 구조: { questId: Set<milestoneId> }
+    // evaluateQuestMilestones 가 대화창 닫을 때마다 AI 판정 결과로 채움.
+    // 퀘스트 해결 시에도 유지됨 (엔딩 분기 판정 등에서 참고 가능).
+    questMilestones: {},
   };
 
 
@@ -128,6 +134,7 @@
     engineState.flags = {};
     engineState.injectedContext = {};
     engineState.seedReports = {};
+    engineState.questMilestones = {};
 
     console.log(
       '[engine] scenario loaded:',
@@ -1040,6 +1047,234 @@
 
 
   // ─────────────────────────────────────────────────────
+  // 작업 6: 퀘스트 마일스톤 판정 [9단계 구현]
+  // ─────────────────────────────────────────────────────
+  // 언제 호출: zeta 대화창을 닫을 때 (state.js __closeZeta 에서 호출).
+  // 뭘 하나:
+  //   1. 현재 활성 스토리 퀘스트(state.quests 중 isStory && !resolved) 찾기
+  //   2. 각 퀘스트의 milestones 중 "이 NPC 와의 대화에서 달성 가능(applicableNpcs)"한 것만 필터
+  //   3. 이미 달성된 것(engineState.questMilestones[questId])은 제외
+  //   4. 남은 것 있으면 AI 호출로 대화 로그 분석 → 어떤 마일스톤이 달성됐는지 JSON 응답
+  //   5. 달성된 건 questMilestones 에 추가
+  //   6. 누적 개수가 resolveThreshold 이상이면 퀘스트 resolved = true
+  //      + engineState.resolvedQuests 에 추가 + checkStageTransition 호출
+  //
+  // 인자:
+  //   npcId: 방금 대화한 NPC 의 id
+  //   dialogueLog: [{role, text}, ...] — 최근 대화 로그 (보통 최근 10턴 정도)
+  //
+  // 반환 (Promise):
+  //   {
+  //     questId: string | null,
+  //     newlyAchieved: [milestoneId, ...],  // 이번에 새로 달성된 것들
+  //     totalAchieved: number,               // 누적 개수
+  //     threshold: number,
+  //     resolved: boolean,                   // 이번 판정으로 퀘스트가 해결됐는가
+  //   }
+  //   해당되는 퀘스트 없으면 { questId: null }.
+  //
+  // 실패 시: console.warn 후 빈 결과 반환 (게임 진행엔 영향 없음).
+  async function evaluateQuestMilestones(npcId, dialogueLog) {
+    const scenario = engineState.scenario;
+    if (!scenario || !scenario.quests) return { questId: null, newlyAchieved: [] };
+    if (typeof state === 'undefined' || !state || !Array.isArray(state.quests)) {
+      return { questId: null, newlyAchieved: [] };
+    }
+
+    // 1. 활성 스토리 퀘스트 찾기 (현재는 하나만 동시에 활성이라고 가정)
+    const activeQuest = state.quests.find(function (q) {
+      return q && q.isStory && !q.resolved;
+    });
+    if (!activeQuest) {
+      console.log('[engine] evaluateQuestMilestones: 활성 스토리 퀘스트 없음');
+      return { questId: null, newlyAchieved: [] };
+    }
+
+    const questDef = scenario.quests[activeQuest.id];
+    if (!questDef || !Array.isArray(questDef.milestones) || questDef.milestones.length === 0) {
+      console.log('[engine] evaluateQuestMilestones: 퀘스트 정의에 milestones 없음');
+      return { questId: activeQuest.id, newlyAchieved: [] };
+    }
+
+    // 2. 이 NPC 와의 대화에서 달성 가능한 마일스톤만 필터
+    const alreadyAchieved = engineState.questMilestones[activeQuest.id] || new Set();
+    const candidates = questDef.milestones.filter(function (m) {
+      if (alreadyAchieved.has(m.id)) return false;
+      if (!Array.isArray(m.applicableNpcs) || m.applicableNpcs.indexOf(npcId) === -1) return false;
+      return true;
+    });
+
+    if (candidates.length === 0) {
+      console.log('[engine] evaluateQuestMilestones: 이 NPC(' + npcId + ')로 달성 가능한 남은 마일스톤 없음');
+      return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
+               threshold: questDef.resolveThreshold || 0, resolved: false };
+    }
+
+    // 3. 대화 로그가 너무 빈약하면 판정 스킵 (AI 낭비 방지)
+    if (!Array.isArray(dialogueLog) || dialogueLog.length === 0) {
+      return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
+               threshold: questDef.resolveThreshold || 0, resolved: false };
+    }
+    const userTurnCount = dialogueLog.filter(function (m) { return m.role === 'user'; }).length;
+    if (userTurnCount === 0) {
+      console.log('[engine] evaluateQuestMilestones: 유저 발화 없음 → 판정 스킵');
+      return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
+               threshold: questDef.resolveThreshold || 0, resolved: false };
+    }
+
+    // 4. AI 호출
+    if (typeof callClaude !== 'function') {
+      console.warn('[engine] evaluateQuestMilestones: callClaude 미정의');
+      return { questId: activeQuest.id, newlyAchieved: [] };
+    }
+
+    // 대화 로그를 문자열로 (user/assistant 구분)
+    const npcName = (state.npcs.find(function (n) { return n.id === npcId; }) || {}).name || npcId;
+    const convoStr = dialogueLog.slice(-10).map(function (m) {
+      const who = m.role === 'user' ? '유저' : npcName;
+      return who + ': ' + m.text;
+    }).join('\n');
+
+    const candidatesStr = candidates.map(function (m, i) {
+      return (i + 1) + '. id="' + m.id + '": ' + m.triggerCondition;
+    }).join('\n');
+
+    const systemPrompt =
+      '너는 게임 대화 분석기다. 유저와 NPC 의 대화 로그를 읽고, ' +
+      '주어진 "마일스톤 조건" 중 어느 것이 이 대화에서 달성됐는지 판정한다.\n' +
+      '규칙:\n' +
+      '1. 대화 전체를 읽고 조건을 엄격하게 평가한다. 조금 비슷하다고 관대하게 주지 않는다.\n' +
+      '2. 유저가 직접 말한 내용 기준으로 판정. NPC가 알아서 한 말은 마일스톤이 아니다.\n' +
+      '3. 반드시 JSON 형식으로만 답한다. 다른 텍스트 금지.\n' +
+      '4. 달성된 마일스톤이 하나도 없으면 achieved 배열을 빈 배열([])로.';
+
+    const userPrompt =
+      '대화 로그:\n' + convoStr + '\n\n' +
+      '평가할 마일스톤 조건 (이 NPC 와의 대화에서 달성 가능한 것만):\n' + candidatesStr + '\n\n' +
+      '답 형식:\n' +
+      '{\n' +
+      '  "achieved": ["달성된_마일스톤_id", ...],\n' +
+      '  "reason": "간단한 판정 이유 한 줄"\n' +
+      '}';
+
+    let aiResult = null;
+    try {
+      aiResult = await callClaude(systemPrompt, userPrompt, true);
+    } catch (err) {
+      console.warn('[engine] evaluateQuestMilestones: AI 호출 실패 (무시)', err);
+      return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
+               threshold: questDef.resolveThreshold || 0, resolved: false };
+    }
+
+    const achieved = (aiResult && Array.isArray(aiResult.achieved)) ? aiResult.achieved : [];
+    console.log('[engine] evaluateQuestMilestones 결과:', achieved, '사유:', aiResult && aiResult.reason);
+
+    // 5. 달성된 것 questMilestones 에 추가 (candidates 에 있던 것만 받아들임 — AI 가 이상한 id 만들어낼 수도 있어서)
+    const validIds = {};
+    candidates.forEach(function (m) { validIds[m.id] = true; });
+    const newlyAchieved = [];
+    if (!engineState.questMilestones[activeQuest.id]) {
+      engineState.questMilestones[activeQuest.id] = new Set();
+    }
+    const targetSet = engineState.questMilestones[activeQuest.id];
+    for (const mid of achieved) {
+      if (validIds[mid] && !targetSet.has(mid)) {
+        targetSet.add(mid);
+        newlyAchieved.push(mid);
+      }
+    }
+
+    // 6. threshold 검사
+    const threshold = questDef.resolveThreshold || questDef.milestones.length;
+    const totalAchieved = targetSet.size;
+    let resolved = false;
+    if (totalAchieved >= threshold) {
+      activeQuest.resolved = true;
+      activeQuest.result = {
+        narrative: '오해가 서서히 풀리기 시작했어요.',
+        resultLabel: '퀘스트 해결',
+        // 기존 3축 필드는 0으로 채움 (UI 호환용; 기존 렌더링에서 NaN 방지)
+        dreamAxis: 'forward', dreamDelta: 0,
+        rumorAxis: 'resolve',
+        affinityDelta: 0,
+      };
+      engineState.resolvedQuests.add(activeQuest.id);
+      resolved = true;
+      console.log('[engine] ⭐ 퀘스트 해결!', activeQuest.id, '(마일스톤', totalAchieved, '/', threshold, ')');
+
+      // 단계 전환 체크 (quest_active → resolved 로 가면 ending_scene autoOnStageEnter 발동됨)
+      try {
+        checkStageTransition();
+      } catch (err) {
+        console.error('[engine] evaluateQuestMilestones: checkStageTransition 에러', err);
+      }
+    }
+
+    return {
+      questId: activeQuest.id,
+      newlyAchieved: newlyAchieved,
+      totalAchieved: totalAchieved,
+      threshold: threshold,
+      resolved: resolved,
+    };
+  }
+
+
+  // ─────────────────────────────────────────────────────
+  // 작업 7: 현재 퀘스트 배너 텍스트 반환 [9단계 구현]
+  // ─────────────────────────────────────────────────────
+  // 언제 호출: UI 가 배너를 렌더링할 때 (단계 전환 후, 대화창 닫은 후, 밤 지난 후 등)
+  //
+  // 선택 규칙:
+  //   1. scenario.questBanners[currentStage] 를 가져옴 (없으면 빈 반환)
+  //   2. 현재 활성 스토리 퀘스트의 달성된 마일스톤 수를 계산
+  //   3. byMilestoneCount 에 해당 개수 키가 있으면 그 텍스트 사용
+  //   4. 아니면 default 텍스트 사용
+  //
+  // 반환:
+  //   {
+  //     text: string,           // 배너 표시 텍스트 ('' 이면 숨김 권장)
+  //     achieved: number,       // 달성된 마일스톤 수 (UI 진행도 표시용)
+  //     threshold: number,      // 필요 마일스톤 수
+  //     questId: string | null, // 활성 스토리 퀘스트 id (없으면 null)
+  //   }
+  function getCurrentBannerText() {
+    const scenario = engineState.scenario;
+    const stage = engineState.currentStage;
+    const empty = { text: '', achieved: 0, threshold: 0, questId: null };
+    if (!scenario || !scenario.questBanners) return empty;
+
+    const stageBanners = scenario.questBanners[stage];
+    if (!stageBanners) return empty;
+
+    // 활성 스토리 퀘스트 + 달성 개수
+    let achieved = 0;
+    let threshold = 0;
+    let questId = null;
+    try {
+      if (typeof state !== 'undefined' && state && Array.isArray(state.quests)) {
+        const q = state.quests.find(function (x) { return x && x.isStory && !x.resolved; });
+        if (q) {
+          questId = q.id;
+          const set = engineState.questMilestones[q.id];
+          achieved = set ? set.size : 0;
+          const qdef = scenario.quests && scenario.quests[q.id];
+          threshold = (qdef && qdef.resolveThreshold) || 0;
+        }
+      }
+    } catch (err) { /* ignore */ }
+
+    // 텍스트 선택: byMilestoneCount 가 있으면 우선, 없으면 default
+    let text = stageBanners.default || '';
+    if (stageBanners.byMilestoneCount && stageBanners.byMilestoneCount[achieved]) {
+      text = stageBanners.byMilestoneCount[achieved];
+    }
+
+    return { text: text, achieved: achieved, threshold: threshold, questId: questId };
+  }
+
+
+  // ─────────────────────────────────────────────────────
   // 5. 전역 노출
   // ─────────────────────────────────────────────────────
   // window.scenarioEngine 으로 접근 가능.
@@ -1061,12 +1296,14 @@
     },
 
     // 함수들
-    loadScenario:         loadScenario,
-    checkStageTransition: checkStageTransition,
-    manageActiveEvents:   manageActiveEvents,
-    handleNpcApproach:    handleNpcApproach,
-    runNightSimulation:   runNightSimulation,
-    getDialogueContext:   getDialogueContext,
+    loadScenario:              loadScenario,
+    checkStageTransition:      checkStageTransition,
+    manageActiveEvents:        manageActiveEvents,
+    handleNpcApproach:         handleNpcApproach,
+    runNightSimulation:        runNightSimulation,
+    getDialogueContext:        getDialogueContext,
+    evaluateQuestMilestones:   evaluateQuestMilestones,  // [9단계]
+    getCurrentBannerText:      getCurrentBannerText,     // [9단계]
   };
 
 
