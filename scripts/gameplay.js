@@ -331,7 +331,7 @@ async function submitQuestAction(text) {
 상황: ${quest.situation}
 
 NPC: ${npc.name} (꿈=${npc.dream}, 꿈진행도=${npc.dreamProgress}%, 호감도=${npc.affinity}/100)
-소문: ${quest.relatedRumors.join(' / ')}
+소문: ${(quest.relatedRumors && quest.relatedRumors.length > 0) ? quest.relatedRumors.join(' / ') : '(없음)'}
 
 유저 행동: "${text.trim()}"
 
@@ -410,7 +410,7 @@ function renderCounts() {
   const qd = document.getElementById('quest-dot');
   if (unresolved > 0) {
     qc.style.display = 'inline-block';
-    qc.textContent = `사건 ${unresolved}건`;
+    qc.textContent = `퀘스트 ${unresolved}건`;
     qd.style.display = 'inline-block';
   } else {
     qc.style.display = 'none';
@@ -583,10 +583,10 @@ function renderContent() {
         <div class="quest-detail">
           <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px">
             <div style="font-size:22px">${npc?.emoji}</div>
-            <div style="font-weight:700">${npc?.name}의 사건</div>
+            <div style="font-weight:700">${npc?.name}의 퀘스트</div>
           </div>
           <div>${escapeHtml(q.situation)}</div>
-          ${q.relatedRumors.length > 0 ? `
+          ${(q.relatedRumors && q.relatedRumors.length > 0) ? `
             <div class="quest-rumors">
               <div>관련 소문:</div>
               ${q.relatedRumors.map(r => `<div>· ${escapeHtml(r)}</div>`).join('')}
@@ -618,29 +618,18 @@ function renderContent() {
       }
     } else {
       const quests = [...state.quests].reverse();
-      const evidenceList = ASSET_SLOTS.evidence;
+      // [8단계] 증거 보관함 UI 제거 (유저 노출 안 함). ASSET_SLOTS/ASSET_META/assetRegistry
+      //         내부 구조는 유지 — showEvidencePopup 이 여전히 사용.
+      //         "동네 사건" → "퀘스트" 로 라벨 변경.
       el.innerHTML = `
-        <div class="section-title">📦 증거 보관함</div>
-        <div class="evidence-grid" style="margin-bottom:14px">
-          ${evidenceList.map(key => {
-            const meta = ASSET_META[key] || { emoji: '🔍', label: key === 'missing_book_found' ? '선반 밑의 책' : key };
-            const collected = collectedEvidence.has(key);
-            const img = assetRegistry[key];
-            return `<div class="evidence-slot ${collected ? 'collected' : 'locked'}" data-key="${key}">
-              <div class="evidence-slot-thumb">${collected && img ? `<img src="${img}" />` : (collected ? meta.emoji : '🔒')}</div>
-              <div class="evidence-slot-name">${collected ? meta.label : '???'}</div>
-            </div>`;
-          }).join('')}
-        </div>
-        
-        <div class="section-title">📖 동네 사건</div>
-        ${quests.length === 0 ? '<div class="empty-state"><span class="big-emoji">📖</span>아직 사건이 없어요.<br>소문이 돈 다음 날 사건이 생겨요.</div>' :
+        <div class="section-title">📖 퀘스트</div>
+        ${quests.length === 0 ? '<div class="empty-state"><span class="big-emoji">📖</span>아직 퀘스트가 없어요.<br>소문이 돈 다음 날 퀘스트가 생겨요.</div>' :
           quests.map(q => {
             const npc = state.npcs.find(n => n.id === q.npcId);
             return `<div class="quest-item ${q.resolved ? 'resolved' : ''}" data-quest-id="${q.id}">
               <div style="display:flex; align-items:center; gap:6px">
                 <div style="font-size:20px">${npc?.emoji}</div>
-                <div style="font-weight:700; font-size:12px">${npc?.name}의 사건
+                <div style="font-weight:700; font-size:12px">${npc?.name}의 퀘스트
                   ${!q.resolved ? '<span style="color:#e63946; margin-left:4px">●NEW</span>' : '<span style="color:#888; margin-left:4px; font-size:10px">✓ 완료</span>'}
                 </div>
               </div>
@@ -650,17 +639,12 @@ function renderContent() {
           }).join('')
         }
       `;
-      // 증거 슬롯 클릭 시 팝업
-      el.querySelectorAll('.evidence-slot.collected').forEach(slot => {
-        slot.addEventListener('click', () => {
-          const key = slot.dataset.key;
-          const meta = ASSET_META[key] || { label: key };
-          showEvidencePopup(key, meta.label);
-        });
-      });
       el.querySelectorAll('.quest-item').forEach(item => {
         item.addEventListener('click', () => {
-          state.activeQuestId = parseFloat(item.dataset.questId);
+          // [8단계 버그픽스] 기존에 parseFloat 사용 → 엔진의 triggerQuest 가 문자열 ID
+          // ('yami_dream_crisis') 를 넣으면 NaN 반환되어 find 실패 → 클릭 무반응.
+          // dataset 은 늘 문자열이므로 그대로 저장. 숫자 ID 도 find 의 == 비교에서 타입 변환됨.
+          state.activeQuestId = item.dataset.questId;
           renderContent();
         });
       });
