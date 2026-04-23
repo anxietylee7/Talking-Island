@@ -1,7 +1,19 @@
 function selectNpc(npcId) {
   const npc = state.npcs.find(n => n.id == npcId);
   if (!npc) return;
-  
+
+  // [6단계] 시나리오 엔진에 NPC 접근 알림.
+  // 활성 낮 이벤트가 있으면 엔진이 발동시킴 (증거 팝업, 호감도 변동, 소문 등).
+  // 없으면 조용히 리턴하므로 기존 흐름에 영향 없음.
+  // 엔진 로드 실패 시 대비해 방어적으로 호출.
+  try {
+    if (window.scenarioEngine && typeof window.scenarioEngine.handleNpcApproach === 'function') {
+      window.scenarioEngine.handleNpcApproach(npcId);
+    }
+  } catch (err) {
+    console.error('[gameplay] scenarioEngine.handleNpcApproach 호출 중 에러 (무시하고 진행):', err);
+  }
+
   // 시나리오 NPC는 제타 스타일 팝업 채팅
   if (npc.isStory && ['chaka', 'yami', 'bamtol'].includes(npc.id)) {
     openZeta(npc.id);
