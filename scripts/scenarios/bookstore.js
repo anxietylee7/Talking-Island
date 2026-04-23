@@ -218,12 +218,14 @@ window.BOOKSTORE_SCENARIO = {
     dormant: [
       {
         id: 'yami_night_pickup',
+        primaryNpcId: 'yami', // [8단계] 리포트 UI 가 NPC 이모지/이름 찾을 때 사용
         scene:
           '야미가 서점에서 예약한 책을 집다가 옆에 있던 책이 떨어졌다.',
         effects: [],
       },
       {
         id: 'chaka_night_photo',
+        primaryNpcId: 'chaka',
         scene:
           '차카가 야경을 찍고 있는데, 우연히 서점 안의 야미가 책을 가방에 집어넣는 모습도 찍혔다.',
         effects: [],
@@ -233,6 +235,7 @@ window.BOOKSTORE_SCENARIO = {
     triggered: [
       {
         id: 'yami_confronts_bamtol',
+        primaryNpcId: 'yami',
         scene:
           '야미가 자기 가방을 들고 밤톨을 찾아가 오해를 해명하려 한다. ' +
           '가방 안에는 예약한 책 한 권만 있다. 밤톨은 대화를 거부한다.',
@@ -244,9 +247,9 @@ window.BOOKSTORE_SCENARIO = {
     ],
 
     quest_active: [
-      { id: 'bamtol_alone', scene: '밤톨이 집에서 혼자 장부를 뒤적이며 고민한다.', effects: [] },
-      { id: 'yami_alone',   scene: '야미가 집에서 독서모임 포스터를 붙잡고 고민한다.', effects: [] },
-      { id: 'chaka_alone',  scene: '차카가 사진관에서 자기 사진을 보며 후회한다.', effects: [] },
+      { id: 'bamtol_alone', primaryNpcId: 'bamtol', scene: '밤톨이 집에서 혼자 장부를 뒤적이며 고민한다.', effects: [] },
+      { id: 'yami_alone',   primaryNpcId: 'yami',   scene: '야미가 집에서 독서모임 포스터를 붙잡고 고민한다.', effects: [] },
+      { id: 'chaka_alone',  primaryNpcId: 'chaka',  scene: '차카가 사진관에서 자기 사진을 보며 후회한다.', effects: [] },
     ],
 
     // resolved 단계는 밤 시뮬레이션 없음 (엔딩 처리로 대체)
