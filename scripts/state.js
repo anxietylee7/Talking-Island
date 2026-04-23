@@ -758,8 +758,41 @@ function openZeta(npcId) {
 }
 
 window.__closeZeta = function() {
+  // [9단계] 대화창 닫을 때 마일스톤 판정 호출.
+  // 엔진이 활성 스토리 퀘스트가 있는지, 이 NPC 로 달성 가능한 마일스톤이 있는지,
+  // 유저 발화가 있는지 전부 체크하고 없으면 조용히 스킵한다.
+  // AI 호출은 비동기지만 여기선 await 하지 않음 (창 닫기 UX 를 막지 않기 위해).
+  // 결과(배너 갱신/퀘스트 해결)는 비동기로 처리됨.
+  const closingNpcId = zetaCurrentNpcId;
+  const closingHistory = closingNpcId ? (state.chatHistory[closingNpcId] || []).slice() : [];
+
   document.getElementById('zeta-chat').classList.remove('show');
   zetaCurrentNpcId = null;
+
+  if (closingNpcId && closingHistory.length > 0
+      && window.scenarioEngine
+      && typeof window.scenarioEngine.evaluateQuestMilestones === 'function') {
+    // fire-and-forget. 판정 끝나면 배너 갱신 트리거.
+    window.scenarioEngine.evaluateQuestMilestones(closingNpcId, closingHistory)
+      .then(function (result) {
+        if (result && result.newlyAchieved && result.newlyAchieved.length > 0) {
+          console.log('[state] 마일스톤 달성:', result.newlyAchieved);
+          showNotification('✨ 대화로 한 발짝 나아갔어요');
+        }
+        // 배너 갱신 (정의돼 있으면)
+        if (typeof renderQuestBanner === 'function') {
+          try { renderQuestBanner(); } catch (e) { /* ignore */ }
+        }
+        // 퀘스트 해결됐으면 UI 전반 갱신
+        if (result && result.resolved) {
+          if (typeof renderContent === 'function') { try { renderContent(); } catch(e){} }
+          if (typeof renderCounts === 'function')  { try { renderCounts(); } catch(e){} }
+        }
+      })
+      .catch(function (err) {
+        console.error('[state] evaluateQuestMilestones 실패 (무시):', err);
+      });
+  }
 };
 
 window.__zetaSend = async function() {
