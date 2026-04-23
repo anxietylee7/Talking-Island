@@ -1143,13 +1143,17 @@
       '너는 게임 대화 분석기다. 유저와 NPC 의 대화 로그를 읽고, ' +
       '주어진 "마일스톤 조건" 중 어느 것이 이 대화에서 달성됐는지 판정한다.\n' +
       '규칙:\n' +
-      '1. 대화 전체를 읽고 조건을 엄격하게 평가한다. 조금 비슷하다고 관대하게 주지 않는다.\n' +
-      '2. 유저가 직접 말한 내용 기준으로 판정. NPC가 알아서 한 말은 마일스톤이 아니다.\n' +
-      '3. 반드시 JSON 형식으로만 답한다. 다른 텍스트 금지.\n' +
-      '4. 달성된 마일스톤이 하나도 없으면 achieved 배열을 빈 배열([])로.';
+      '1. **대화 로그 전체를 처음부터 끝까지 다시 평가한다.** 이전에 어떻게 판정했는지는 무관하다. ' +
+      '과거 유저 발화도 최신 발화와 동등하게 고려한다. 같은 말이라도 문맥이 쌓였다면 나중에 인정될 수 있다.\n' +
+      '2. 조건을 엄격하되 일관되게 평가한다. 유저가 표현한 의미가 조건에 부합하면 짧거나 반말이어도 인정한다. ' +
+      '예를 들어 "억울하겠네", "억울하징", "네 말이 맞다" 는 모두 공감 표현으로 간주한다.\n' +
+      '3. 유저가 직접 말한 내용 기준으로 판정. NPC가 알아서 한 말은 마일스톤이 아니다.\n' +
+      '4. 반드시 JSON 형식으로만 답한다. 다른 텍스트 금지.\n' +
+      '5. 달성된 마일스톤이 하나도 없으면 achieved 배열을 빈 배열([])로.\n' +
+      '6. 같은 대화 로그를 여러 번 평가해도 같은 결과가 나와야 한다 (일관성).';
 
     const userPrompt =
-      '대화 로그:\n' + convoStr + '\n\n' +
+      '대화 로그 (유저 = 플레이어, ' + npcName + ' = NPC):\n' + convoStr + '\n\n' +
       '평가할 마일스톤 조건 (이 NPC 와의 대화에서 달성 가능한 것만):\n' + candidatesStr + '\n\n' +
       '답 형식:\n' +
       '{\n' +
@@ -1159,7 +1163,9 @@
 
     let aiResult = null;
     try {
-      aiResult = await callClaude(systemPrompt, userPrompt, true);
+      // [9단계 수정] temperature 0.2 로 낮춰 판정 일관성 확보.
+      // (NPC 답변 생성은 여전히 0.85 유지 — 창의성 필요)
+      aiResult = await callClaude(systemPrompt, userPrompt, true, { temperature: 0.2 });
     } catch (err) {
       console.warn('[engine] evaluateQuestMilestones: AI 호출 실패 (무시)', err);
       return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
@@ -1171,8 +1177,10 @@
 
     // 5. 달성된 것 questMilestones 에 추가 (candidates 에 있던 것만 받아들임 — AI 가 이상한 id 만들어낼 수도 있어서)
     const validIds = {};
-    candidates.forEach(function (m) { validIds[m.id] = true; });
+    const candidateById = {};
+    candidates.forEach(function (m) { validIds[m.id] = true; candidateById[m.id] = m; });
     const newlyAchieved = [];
+    const newlyAchievedDetails = []; // [9단계] { id, description } 형태 — UI 알림에서 사용
     if (!engineState.questMilestones[activeQuest.id]) {
       engineState.questMilestones[activeQuest.id] = new Set();
     }
@@ -1181,6 +1189,10 @@
       if (validIds[mid] && !targetSet.has(mid)) {
         targetSet.add(mid);
         newlyAchieved.push(mid);
+        newlyAchievedDetails.push({
+          id: mid,
+          description: (candidateById[mid] && candidateById[mid].description) || mid,
+        });
       }
     }
 
@@ -1213,6 +1225,7 @@
     return {
       questId: activeQuest.id,
       newlyAchieved: newlyAchieved,
+      newlyAchievedDetails: newlyAchievedDetails, // [9단계] { id, description } 배열
       totalAchieved: totalAchieved,
       threshold: threshold,
       resolved: resolved,
