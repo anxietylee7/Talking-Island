@@ -9,13 +9,16 @@
 //   [5단계 완료] checkStageTransition / manageActiveEvents (작업 1, 2) 실제 구현
 //                + effect 타입 4개 추가 (showStoryModal/addRumor/injectNpcContext/setFlag)
 //                + autoOnStageEnter 이벤트 자동 발동
+//   [6단계 완료] handleNpcApproach(작업 3) 실제 구현
+//                + triggerQuest effect 실제 구현 (호감도 기반 branch 선택)
+//                + seed effect 는 경고만 남기고 통과 (실제 AI 호출은 7단계)
+//                + gameplay.js selectNpc 시작부에 엔진 호출 1줄 추가
 //   [이후 예정]
-//     6단계: handleNpcApproach(작업 3) + triggerQuest/seed effect 추가 + gameplay.js 연결
-//     7단계: getDialogueContext(작업 5) + state.js 연결
+//     7단계: getDialogueContext(작업 5) + state.js 연결 + seed effect AI 호출 구현
 //     8단계: gameplay.js의 advanceToNightAndMorning 완전 교체 + 기존 하드코딩 제거
 //
-// ⚠️ 현재 상태: 기존 코드(state.js / gameplay.js / scene.js)는 아직
-//    엔진을 호출하지 않는다. 즉, 이 파일은 게임 흐름에 자동으로는 끼어들지 않는다.
+// ⚠️ 현재 상태: gameplay.js 의 selectNpc 가 엔진의 handleNpcApproach 를 호출함 (6단계).
+//    나머지(밤 시뮬, 단계 전환, 대화 컨텍스트)는 여전히 기존 코드가 담당하며 엔진과 연결 안 됨.
 //    runNightSimulation, checkStageTransition 등은 콘솔에서 수동 호출해 검증.
 //
 // 로드 순서(index.html):
@@ -276,14 +279,69 @@
     manageActiveEvents();
   }
 
-  // 작업 3: NPC 접근 시 이벤트 발동
-  // 언제 호출: 유저가 NPC에게 3m 내로 접근했을 때 (gameplay.js 에서)
-  // 해당 NPC에 연결된 활성 이벤트가 있으면 effects 순차 실행.
+  // 작업 3: NPC 접근 시 이벤트 발동 [6단계 구현]
+  // 언제 호출: 유저가 NPC 대화를 열 때 (gameplay.js 의 selectNpc 시작부)
+  //
+  // 동작:
+  //   1. activeEvents 중 trigger 가 이 NPC에 매칭되는 것을 찾는다.
+  //      - trigger.type === 'approachNpc' && trigger.npcId === npcId   → 매칭
+  //      - trigger.type === 'approachAnyNpc' && trigger.npcIds.includes(npcId) → 매칭
+  //      - autoOnStageEnter 는 여기서 처리 안 함 (이미 단계 전환 시 발동됨)
+  //   2. 매칭되는 이벤트가 있으면 effects 순차 실행 + completedEvents 에 추가.
+  //   3. manageActiveEvents() 재호출 → 후속 이벤트 풀릴 수 있음.
+  //   4. 매칭되는 게 여러 개면 전부 실행 (동시에 여러 개가 트리거 걸리는 일은 드물지만 방어적).
+  //   5. 아무것도 매칭 안 되면 조용히 return (로그 1줄만).
+  //
+  // 반환값: 실행된 이벤트 ID 배열 (디버깅용). 없으면 빈 배열.
+  //
+  // 재발동 방지: completedEvents 에 추가되면 다음 manageActiveEvents 에서 자동 제외되므로
+  //             같은 이벤트가 두 번 발동되지 않는다.
   function handleNpcApproach(npcId) {
-    console.log(
-      '[engine][stub] handleNpcApproach 호출됨. npcId=' + npcId +
-      ' (6단계에서 실제 구현 예정)'
-    );
+    if (!npcId) {
+      console.warn('[engine] handleNpcApproach: npcId 없음');
+      return [];
+    }
+    if (!engineState.scenario) {
+      console.warn('[engine] handleNpcApproach: 시나리오 미로드');
+      return [];
+    }
+
+    // 현재 activeEvents 중 이 NPC에 매칭되는 것만 필터
+    const matched = engineState.activeEvents.filter(function (ev) {
+      const t = ev.trigger;
+      if (!t) return false;
+      if (t.type === 'approachNpc') {
+        return t.npcId === npcId;
+      }
+      if (t.type === 'approachAnyNpc') {
+        return Array.isArray(t.npcIds) && t.npcIds.indexOf(npcId) !== -1;
+      }
+      return false; // autoOnStageEnter 등 다른 타입은 여기서 다루지 않음
+    });
+
+    if (matched.length === 0) {
+      // 활성 이벤트 없음 → 조용히 종료 (일상적인 경우이므로 경고 아님)
+      console.log('[engine] handleNpcApproach: 활성 이벤트 없음. npcId=' + npcId);
+      return [];
+    }
+
+    const firedIds = [];
+    for (const ev of matched) {
+      // 방어적 중복 체크: activeEvents 에 들어와 있다면 이미 completedEvents 에 없긴 하지만,
+      // 같은 턴 안에서 여러 이벤트가 발동될 때 앞 이벤트의 manageActiveEvents 가 다시
+      // 이 이벤트를 올릴 가능성은 없지만, 안전을 위해 체크.
+      if (engineState.completedEvents.has(ev.id)) continue;
+
+      console.log('[engine] handleNpcApproach: 이벤트 발동 →', ev.id, '(npcId=' + npcId + ')');
+      _applyEffects(ev.effects, { source: 'approach:' + ev.id + ':' + npcId });
+      engineState.completedEvents.add(ev.id);
+      firedIds.push(ev.id);
+    }
+
+    // 후속 이벤트가 풀릴 수 있으므로 activeEvents 재계산
+    manageActiveEvents();
+
+    return firedIds;
   }
 
   // 작업 4: 밤 시뮬레이션
@@ -542,6 +600,100 @@
             } else {
               log.push({ type: fx.type, status: 'invalid' });
             }
+            break;
+
+          case 'triggerQuest':
+            // [6단계 구현] 시나리오의 quests[questId] 정의를 읽어 state.quests 에 추가.
+            // 야미의 현재 호감도를 보고 branches 중 적절한 것을 선택한다.
+            {
+              const questId = fx.questId;
+              const scenario = engineState.scenario;
+              if (!questId || !scenario || !scenario.quests || !scenario.quests[questId]) {
+                console.warn('[engine][effect] triggerQuest: quest 정의 없음', questId);
+                log.push({ type: fx.type, questId: questId, status: 'quest_not_found' });
+                break;
+              }
+              const questDef = scenario.quests[questId];
+
+              // 이미 발동된 퀘스트면 중복 방지
+              if (typeof state !== 'undefined' && state && Array.isArray(state.quests)) {
+                const exists = state.quests.some(function (q) { return q.id === questId; });
+                if (exists) {
+                  console.log('[engine][effect] triggerQuest: 이미 발동된 퀘스트', questId);
+                  log.push({ type: fx.type, questId: questId, status: 'already_triggered' });
+                  break;
+                }
+              }
+
+              // branches 순회하며 조건에 맞는 것 선택 (type:'default' 는 최종 fallback)
+              let chosenBranch = null;
+              if (Array.isArray(questDef.branches)) {
+                for (const br of questDef.branches) {
+                  if (!br.condition) continue;
+                  const c = br.condition;
+                  if (c.type === 'affinityGte') {
+                    const targetNpc = (state && state.npcs) ?
+                      state.npcs.find(function (n) { return n.id === c.npcId; }) : null;
+                    const aff = targetNpc ? (targetNpc.affinity || 0) : 0;
+                    if (aff >= (c.value || 0)) { chosenBranch = br; break; }
+                  } else if (c.type === 'default') {
+                    chosenBranch = br;
+                    break;
+                  }
+                }
+                // 아무것도 안 맞으면 첫 번째 branch 로 fallback
+                if (!chosenBranch && questDef.branches.length > 0) {
+                  chosenBranch = questDef.branches[questDef.branches.length - 1];
+                }
+              }
+
+              if (!chosenBranch) {
+                console.warn('[engine][effect] triggerQuest: 적합한 branch 없음', questId);
+                log.push({ type: fx.type, questId: questId, status: 'no_branch' });
+                break;
+              }
+
+              // state.quests 에 추가 (기존 gameplay.js 구조 참조)
+              if (typeof state !== 'undefined' && state && Array.isArray(state.quests)) {
+                const questObj = {
+                  id: questId,
+                  npcId: questDef.targetNpcId,
+                  day: state.day || 1,
+                  situation: chosenBranch.situation || '',
+                  resolved: false,
+                  result: null,
+                  isStory: true,
+                  affinityRoute: chosenBranch.key,
+                };
+                state.quests.push(questObj);
+                log.push({
+                  type: fx.type, questId: questId,
+                  branch: chosenBranch.key, status: 'ok'
+                });
+                console.log('[engine][effect] triggerQuest 발동:', questId, '(branch=' + chosenBranch.key + ')');
+                // UI 갱신
+                if (typeof renderContent === 'function') {
+                  try { renderContent(); } catch (e) { /* ignore */ }
+                }
+                if (typeof renderCounts === 'function') {
+                  try { renderCounts(); } catch (e) { /* ignore */ }
+                }
+              } else {
+                console.warn('[engine][effect] triggerQuest: state.quests 접근 불가');
+                log.push({ type: fx.type, status: 'skipped_no_state' });
+              }
+            }
+            break;
+
+          case 'seed':
+            // [6단계는 경고만. 실제 AI 호출은 7단계.]
+            // chaka_bamtol_distortion 의 distortion_seed 처리 등이 여기 해당.
+            // 현재는 로그만 남기고 통과시킨다. 다른 effects 는 정상 실행됨.
+            console.log(
+              '[engine][effect] seed effect 수신 (7단계에서 AI 호출 구현 예정):',
+              fx.seedId || '(id 없음)'
+            );
+            log.push({ type: fx.type, seedId: fx.seedId, status: 'deferred_to_step7' });
             break;
 
           default:
