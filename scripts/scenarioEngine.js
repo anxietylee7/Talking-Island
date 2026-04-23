@@ -13,6 +13,10 @@
 //                + triggerQuest effect 실제 구현 (호감도 기반 branch 선택)
 //                + seed effect 는 경고만 남기고 통과 (실제 AI 호출은 7단계)
 //                + gameplay.js selectNpc 시작부에 엔진 호출 1줄 추가
+//                + UI 팝업/모달 큐 매니저 추가 (동시 호출 시 순차 표시)
+//                  * showEvidencePopup / showStoryModal 이 큐 경유로 변경
+//                  * state.js 의 __closeEvidence / __closeStoryModal 을 wrap 해서
+//                    사용자가 닫을 때마다 다음 항목 표시. state.js 자체는 무수정.
 //   [이후 예정]
 //     7단계: getDialogueContext(작업 5) + state.js 연결 + seed effect AI 호출 구현
 //     8단계: gameplay.js의 advanceToNightAndMorning 완전 교체 + 기존 하드코딩 제거
@@ -499,6 +503,118 @@
   //   - ending (8단계에서 엔딩 분기)
   //
   // 모르는 타입은 경고만 남기고 스킵.
+
+
+  // ─────────────────────────────────────────────────────
+  // 4.5 UI 팝업/모달 큐 매니저 [6단계 추가]
+  // ─────────────────────────────────────────────────────
+  // 문제 배경: state.js 의 showEvidencePopup / showStoryModal 은 단일 DOM 요소를
+  //           덮어쓰는 구조라서, 한 턴에 2개 이상 연속 호출되면 앞 것이 묵살된다.
+  //           예: handleNpcApproach('bamtol') 로 이벤트 2개가 동시에 발동돼
+  //               증거 팝업이 총 3번 호출돼도 첫 번째만 보이는 현상.
+  //
+  // 해결: 엔진 내부에 큐를 두고 한 번에 하나씩 표시. 사용자가 닫으면 다음 것 표시.
+  //      state.js 는 수정하지 않는다 (인계 원칙 유지). 대신 window.__closeEvidence /
+  //      window.__closeStoryModal 을 감싸서(wrap) 원본 동작 + 큐 진행을 같이 한다.
+  //
+  // 항목 형식:
+  //   { kind: 'evidence', assetKey, caption }
+  //   { kind: 'story', title, body }
+  //
+  // 큐잉 함수는 _applyEffects 에서 showEvidencePopup / showStoryModal 케이스가 직접 호출.
+  const _uiQueue = {
+    items: [],      // 대기 중인 항목들
+    current: null,  // 현재 표시 중인 항목 (null 이면 idle)
+  };
+
+  // 큐에 추가. 현재 아무것도 표시 중이 아니면 즉시 표시.
+  function _enqueueUi(item) {
+    _uiQueue.items.push(item);
+    if (!_uiQueue.current) {
+      _showNextUi();
+    }
+  }
+
+  // 큐에서 다음 항목을 꺼내 실제 표시. 비어 있으면 idle 로.
+  function _showNextUi() {
+    const next = _uiQueue.items.shift();
+    if (!next) {
+      _uiQueue.current = null;
+      return;
+    }
+    _uiQueue.current = next;
+    try {
+      if (next.kind === 'evidence') {
+        if (typeof showEvidencePopup === 'function') {
+          showEvidencePopup(next.assetKey, next.caption || '');
+        } else {
+          console.warn('[engine][ui-queue] showEvidencePopup 함수 없음');
+          // 함수가 없으면 그냥 스킵하고 다음 항목으로
+          _showNextUi();
+        }
+      } else if (next.kind === 'story') {
+        if (typeof showStoryModal === 'function') {
+          showStoryModal(next.title || '', next.body || '');
+        } else {
+          console.warn('[engine][ui-queue] showStoryModal 함수 없음');
+          _showNextUi();
+        }
+      } else {
+        console.warn('[engine][ui-queue] 알 수 없는 kind:', next.kind);
+        _showNextUi();
+      }
+    } catch (err) {
+      console.error('[engine][ui-queue] 표시 중 에러, 다음 항목으로 진행:', err);
+      _showNextUi();
+    }
+  }
+
+  // state.js 의 닫기 함수를 감싼다 (wrap).
+  // 원본이 이미 존재해야 감쌀 수 있으므로, state.js 로드 후에 호출해야 한다.
+  // setTimeout(0) 으로 현재 실행 스택 비운 뒤에 바인딩해서 state.js 로드를 기다림.
+  function _installCloseHooks() {
+    const origCloseEvidence = window.__closeEvidence;
+    const origCloseStory    = window.__closeStoryModal;
+
+    if (typeof origCloseEvidence === 'function') {
+      window.__closeEvidence = function () {
+        try { origCloseEvidence.apply(this, arguments); }
+        catch (e) { console.error('[engine][ui-queue] origCloseEvidence 에러:', e); }
+        // 증거 모달을 닫았고 현재 큐 항목이 evidence 면 다음으로 진행
+        if (_uiQueue.current && _uiQueue.current.kind === 'evidence') {
+          _uiQueue.current = null;
+          _showNextUi();
+        }
+      };
+    } else {
+      console.warn('[engine][ui-queue] window.__closeEvidence 없음 (state.js 로드 전?)');
+    }
+
+    if (typeof origCloseStory === 'function') {
+      window.__closeStoryModal = function () {
+        try { origCloseStory.apply(this, arguments); }
+        catch (e) { console.error('[engine][ui-queue] origCloseStory 에러:', e); }
+        if (_uiQueue.current && _uiQueue.current.kind === 'story') {
+          _uiQueue.current = null;
+          _showNextUi();
+        }
+      };
+    } else {
+      console.warn('[engine][ui-queue] window.__closeStoryModal 없음 (state.js 로드 전?)');
+    }
+  }
+
+  // 엔진 로드 시점에는 아직 state.js 가 실행 전일 수 있다.
+  // index.html 의 <script> 순서는 scenarioEngine.js → state.js 이기 때문.
+  // DOMContentLoaded 를 기다려서 감싸기 설치.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _installCloseHooks);
+  } else {
+    // 이미 로드 완료 상태면 다음 틱에 설치 (state.js 가 같은 턴에 실행 중일 수 있음)
+    setTimeout(_installCloseHooks, 0);
+  }
+
+
   function _applyEffects(effects, context) {
     const log = [];
     if (!Array.isArray(effects)) return log;
@@ -508,14 +624,9 @@
         switch (fx.type) {
 
           case 'showEvidencePopup':
-            // state.js 의 전역 함수 showEvidencePopup(assetKey, context) 호출.
-            if (typeof showEvidencePopup === 'function') {
-              showEvidencePopup(fx.assetKey, fx.caption || '');
-              log.push({ type: fx.type, assetKey: fx.assetKey, status: 'ok' });
-            } else {
-              console.warn('[engine][effect] showEvidencePopup 함수 없음 (state.js 미로드?)');
-              log.push({ type: fx.type, status: 'skipped_no_func' });
-            }
+            // [6단계 변경] 직접 호출 대신 큐에 넣음 (동시 발동 시 순차 표시 보장).
+            _enqueueUi({ kind: 'evidence', assetKey: fx.assetKey, caption: fx.caption || '' });
+            log.push({ type: fx.type, assetKey: fx.assetKey, status: 'queued' });
             break;
 
           case 'changeAffinity':
@@ -544,14 +655,9 @@
             break;
 
           case 'showStoryModal':
-            // state.js 의 전역 showStoryModal(title, body) 호출.
-            if (typeof showStoryModal === 'function') {
-              showStoryModal(fx.title || '', fx.body || '');
-              log.push({ type: fx.type, title: fx.title, status: 'ok' });
-            } else {
-              console.warn('[engine][effect] showStoryModal 함수 없음');
-              log.push({ type: fx.type, status: 'skipped_no_func' });
-            }
+            // [6단계 변경] 직접 호출 대신 큐에 넣음 (동시 발동 시 순차 표시 보장).
+            _enqueueUi({ kind: 'story', title: fx.title || '', body: fx.body || '' });
+            log.push({ type: fx.type, title: fx.title, status: 'queued' });
             break;
 
           case 'addRumor':
@@ -737,6 +843,14 @@
     // 편의 getter
     get scenario()     { return engineState.scenario; },
     get currentStage() { return engineState.currentStage; },
+
+    // UI 큐 상태 (디버깅용)
+    get _uiQueueState() {
+      return {
+        current: _uiQueue.current,
+        pending: _uiQueue.items.slice(),
+      };
+    },
 
     // 함수들
     loadScenario:         loadScenario,
