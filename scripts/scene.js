@@ -307,18 +307,73 @@ const gltfCache = {}; // { 'chaka': {scene, animations} } 형태
 
 // 시나리오 NPC ID → 모델 파일명 매핑
 const NPC_MODEL_MAP = {
-  'story_chaka': 'models/chaka.glb',
-  'story_yami': 'models/yami.glb',
-  'story_bamtol': 'models/bamtol.glb',
-  'story_luru': 'models/luru.glb',
-  'story_somi': 'models/somi.glb',
+  'chaka': 'models/chaka.glb',
+  'yami': 'models/yami.glb',
+  'bamtol': 'models/bamtol.glb',
+  'luru': 'models/luru.glb',
+  'somi': 'models/somi.glb',
 };
 
 // 유저 전용 GLB 모델 (없으면 null로 두면 기존 프리미티브가 유지됨)
 const USER_MODEL_PATH = 'models/user.glb';
 
 // 모델의 자동 크기 조정: NPC 메시의 표준 높이는 약 2.0 유닛
-// (기존 프리미티브 머리 끝이 대략 y=1.7~1.8 정도)
+// 프리로드된 유저 GLB (preloadAllGltfModels로 채워짐)
+let preloadedUserGltf = null;
+
+// =========================================================
+// GLB 프리로드 — 마을 진입 전에 모든 모델을 미리 로드
+// =========================================================
+// main.js의 __enterVillage에서 await로 호출됨.
+// 실패한 파일이 있어도 나머지는 진행 (Promise.allSettled).
+// onProgress(loaded, total, currentName) 콜백으로 진행률 전달 가능.
+async function preloadAllGltfModels(onProgress) {
+  const tasks = [];
+  // NPC 5개
+  for (const [npcId, path] of Object.entries(NPC_MODEL_MAP)) {
+    tasks.push({ key: npcId, path, kind: 'npc' });
+  }
+  // 유저 1개
+  if (USER_MODEL_PATH) {
+    tasks.push({ key: '__user', path: USER_MODEL_PATH, kind: 'user' });
+  }
+  
+  const total = tasks.length;
+  let loaded = 0;
+  
+  const promises = tasks.map(task => {
+    return new Promise((resolve) => {
+      gltfLoader.load(
+        task.path,
+        gltf => {
+          if (task.kind === 'npc') {
+            gltfCache[task.key] = { scene: gltf.scene, animations: gltf.animations };
+          } else if (task.kind === 'user') {
+            preloadedUserGltf = { scene: gltf.scene, animations: gltf.animations };
+          }
+          loaded++;
+          if (onProgress) onProgress(loaded, total, task.key);
+          console.log(`[preload] ✅ ${task.path} (${loaded}/${total})`);
+          resolve({ ok: true, key: task.key });
+        },
+        undefined,
+        err => {
+          loaded++;
+          if (onProgress) onProgress(loaded, total, task.key);
+          console.warn(`[preload] ❌ ${task.path} failed:`, err?.message || err);
+          resolve({ ok: false, key: task.key, err });
+        }
+      );
+    });
+  });
+  
+  const results = await Promise.all(promises);
+  const successCount = results.filter(r => r.ok).length;
+  console.log(`[preload] 완료: ${successCount}/${total}장 로드 성공`);
+  return results;
+}
+// 전역 노출 (main.js에서 호출)
+window.__preloadAllGltfModels = preloadAllGltfModels;
 // 모델의 자동 크기 조정: 프리미티브 NPC 기준(~1.8)의 약 절반 크기
 const TARGET_NPC_HEIGHT = 1.0;
 
@@ -681,21 +736,27 @@ function createUserMesh() {
   });
   group.userData.fallbackMeshes = userFallbackMeshes;
   
-  // GLB 파일 비동기 로드 시도
-  if (USER_MODEL_PATH) {
+  // 🔧 프리로드된 유저 GLB가 있으면 즉시 적용 (깜빡임 없음)
+  if (preloadedUserGltf) {
+    const { mixer } = attachGltfToGroup(group, preloadedUserGltf.scene, preloadedUserGltf.animations);
+    group.userData.mixer = mixer;
+    // 프리미티브 즉시 숨김
+    userFallbackMeshes.forEach(m => { m.visible = false; });
+    console.log(`[gltf] user model applied from preload cache`);
+  } else if (USER_MODEL_PATH) {
+    // 폴백: 프리로드가 실패했거나 아직 안 끝났을 때만 실시간 로드 시도
+    console.warn('[gltf] user GLB not in preload cache, loading on-demand');
     gltfLoader.load(
       USER_MODEL_PATH,
       gltf => {
         const { mixer } = attachGltfToGroup(group, gltf.scene, gltf.animations);
         group.userData.mixer = mixer;
-        // 프리미티브 숨김
         userFallbackMeshes.forEach(m => { m.visible = false; });
-        console.log(`[gltf] loaded user model ${USER_MODEL_PATH}`, gltf.animations?.length ? `(${gltf.animations.length} animations)` : '(no animations)');
+        console.log(`[gltf] loaded user model ${USER_MODEL_PATH} (on-demand)`);
       },
       undefined,
       err => {
         console.warn(`[gltf] user model not found at ${USER_MODEL_PATH} — using primitive fallback`);
-        // 404 등이면 프리미티브 그대로 유지 (정상 동작)
       }
     );
   }
