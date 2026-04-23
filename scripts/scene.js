@@ -1999,9 +1999,12 @@ function updateNpcs(dt) {
     
     // 밤 자동 귀가는 외부에서만
     if (n.currentScene === 'outside' && state.phase === 'night' && !state.simulation.active) {
-      const home = LOCATIONS[1 + (parseInt(id) % 4)];
-      n.targetPos = new THREE.Vector3(home.x, 0, home.z);
-      n.state = 'walking';
+      // NPC별 homeLocation으로 귀가 (data.js 에 정의됨). homeLocation 없으면 건너뜀.
+      const home = LOCATIONS.find(l => l.interior === npc.homeLocation);
+      if (home) {
+        n.targetPos = new THREE.Vector3(home.x, 0, home.z);
+        n.state = 'walking';
+      }
     }
     // 시뮬레이션 중 scriptedTarget이 있으면 그걸로 덮어쓰기
     if (state.simulation.active && n.scriptedTarget) {
