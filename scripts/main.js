@@ -3,6 +3,28 @@ function buildDrawSequence() {
   return [...STORY_NPCS].sort(() => Math.random() - 0.5);
 }
 
+// [9.5단계] sessionStorage 복구 시도.
+// state.js 와 scenarioEngine.js 가 이미 로드된 후(script 순서상 그렇다) 호출된다.
+// 복구 성공 시: state.npcs 가 채워짐 + 엔진 상태 세팅됨 → 가챠 스킵하고 바로 마을 진입.
+// 주의: 인트로 가챠가 시작되기 전에 호출돼야 한다.
+function tryRestoreSessionOnLoad() {
+  if (typeof restoreState !== 'function') return false;
+  // STORY_NPCS 를 먼저 state.npcs 에 채워야 restoreState 가 id 매칭으로 필드 덮어쓸 수 있다.
+  // (restoreState 는 state.npcs 가 비어있으면 NPC 동적 필드 복구를 건너뜀)
+  if (state.npcs.length === 0) {
+    STORY_NPCS.forEach(tpl => {
+      state.npcs.push({ ...tpl, location: tpl.homeLocation || 'outside' });
+    });
+  }
+  const restored = restoreState();
+  if (!restored) {
+    // 복구 실패 → 가챠부터 시작. state.npcs 비워서 원래 흐름으로.
+    state.npcs = [];
+    return false;
+  }
+  return true;
+}
+
 window.__introRollGacha = async function() {
   console.log('[intro] gacha clicked, index:', introDrawIndex);
   const btn = document.getElementById('intro-gacha-btn');
@@ -173,12 +195,55 @@ function attach(id, event, fn) {
 attach('night-btn', 'click', advanceToNightAndMorning);
 attach('exit-interior', 'click', exitInterior);
 
+// [9.5단계] 세션 복구 시도. 성공 시: 인트로 가챠 스킵하고 바로 마을 진입.
+(async function attemptSessionRestore() {
+  const restored = tryRestoreSessionOnLoad();
+  if (!restored) return; // 복구 실패 → 인트로 가챠 정상 진행
+
+  console.log('[intro] 세션 복구됨. 인트로 건너뛰고 마을 진입합니다.');
+
+  // GLB 모델 프리로드
+  try {
+    if (window.__preloadAllGltfModels) {
+      await window.__preloadAllGltfModels(() => {});
+    }
+  } catch (err) {
+    console.error('[intro] preload 실패 (무시):', err);
+  }
+
+  // 인트로 숨기고 마을 진입
+  const intro = document.getElementById('intro-screen');
+  if (intro) intro.style.display = 'none';
+
+  // NPC 메시 + 유저 스폰
+  state.npcs.forEach(npc => {
+    if (!npcMeshes[npc.id]) spawnNpcMesh(npc);
+  });
+  if (!state.user.mesh) spawnUserMesh();
+
+  // UI 갱신
+  renderNpcList();
+  renderTabs();
+  renderContent();
+  renderCounts();
+  if (typeof renderQuestBanner === 'function') renderQuestBanner();
+
+  showNotification('🔄 이전 세션에서 이어집니다');
+})();
+
 // 초기 렌더링
 renderNpcList();
 renderTabs();
 renderContent();
 renderCounts();
 if (typeof renderQuestBanner === 'function') renderQuestBanner(); // [9단계]
+
+// [9.5단계] 주기적 상태 저장 (30초마다 + 페이지 떠날 때)
+// __closeZeta 가 이미 개별 저장 트리거하지만, 혹시 모를 누락 방지용 안전망.
+if (typeof persistState === 'function') {
+  setInterval(() => { try { persistState(); } catch(e) {} }, 30000);
+  window.addEventListener('beforeunload', () => { try { persistState(); } catch(e) {} });
+}
 
 // =========================================================
 // 애니메이션 루프
