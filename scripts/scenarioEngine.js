@@ -23,12 +23,22 @@
 //                + _generateDistortionLine 신규 (_generateSceneLine 과 별개, truth/distortion 활용)
 //                + state.js __zetaSend 에서 getDialogueContext concat (Q1=C, 기존 하드코딩 유지)
 //                + gameplay.js sendChatMessage 에서 getDialogueContext concat (Q1=C)
-//   [이후 예정]
-//     8단계: gameplay.js의 advanceToNightAndMorning 완전 교체 + 기존 하드코딩 제거
+//   [8단계 완료] advanceToNightAndMorning 완전 교체 + 기존 하드코딩 제거
+//                + ending effect 구현 (endings[branchKey].branches 분기)
+//                + submitQuestAction 스토리 분기 제거 → resolvedQuests + checkStageTransition 호출로 대체
+//                + state.storyStage 필드 제거, 참조 9곳 전부 정리 (엔진 currentStage 로 일원화)
+//                + state.js 의 NIGHT_SCRIPTS 는 NPC 시네마틱 스크립트였으므로 유지 (v3 부채 1번 오분류)
+//                + state.js __zetaSend 키워드 증거 팝업 3블록 제거
+//                + ASSET_SLOTS/ASSET_META 에서 bamtol_ledger, book_reservation_slip 제거
+//                + storyContext 하드코딩 전부 제거 (엔진 getDialogueContext 가 전담)
+//                + _transitionStage 의 manageActiveEvents 중복은 중복이 아님 (v3 부채 8번 오분류). 주석만 명확화.
 //
-// ⚠️ 현재 상태: gameplay.js 의 selectNpc 가 엔진의 handleNpcApproach 를 호출함 (6단계).
-//    나머지(밤 시뮬, 단계 전환, 대화 컨텍스트)는 여전히 기존 코드가 담당하며 엔진과 연결 안 됨.
-//    runNightSimulation, checkStageTransition 등은 콘솔에서 수동 호출해 검증.
+// ✅ 현재 상태 (8단계 완료): 엔진이 게임 메인 플로우 전체와 연결됨.
+//    - selectNpc → handleNpcApproach (6단계)
+//    - __zetaSend / sendChatMessage → getDialogueContext (7단계)
+//    - advanceToNightAndMorning → runNightSimulation + checkStageTransition (8단계)
+//    - submitQuestAction → resolvedQuests + checkStageTransition (8단계)
+//    기존 storyStage 하드코딩, 증거 팝업 체인, 에필로그 분기 등은 전부 시나리오 데이터 기반으로 이동.
 //
 // 로드 순서(index.html):
 //   data.js → scenarios/bookstore.js → scenarioEngine.js → state.js → ...
@@ -210,10 +220,13 @@
     engineState.seedReports = {}; // [7단계] 다음 단계로 오래된 장면 새지 않게 초기화
     console.log('[engine] stage transitioned to:', newStage);
 
-    // 새 단계 낮 이벤트 활성화
+    // 새 단계 낮 이벤트 활성화 + autoOnStageEnter 이벤트 즉시 실행.
+    // _fireAutoOnStageEnterEvents 가 끝에서 manageActiveEvents 를 다시 호출하므로
+    // 여기서 manageActiveEvents 를 먼저 부를 필요 없다.
+    // (v2 5.9 부채 / v4 8단계 Phase A 정리)
+    // 단, _fireAutoOnStageEnterEvents 는 activeEvents 기준으로 돌기 때문에 먼저
+    // manageActiveEvents 를 한 번 호출해서 새 단계의 activeEvents 를 채워줘야 한다.
     manageActiveEvents();
-
-    // autoOnStageEnter 이벤트 즉시 실행
     _fireAutoOnStageEnterEvents();
 
     return newStage;
@@ -890,14 +903,67 @@
             }
             break;
 
-          default:
-            // 이 단계에서 미지원 타입은 6~8단계에서 추가됨.
-            console.log(
-              '[engine][effect] 미지원 effect 타입 (현 단계에선 스킵): ' + fx.type +
-              ' (from ' + (context && context.source) + ')'
-            );
-            log.push({ type: fx.type, status: 'unsupported_in_stage' });
+          case 'ending':
+            // [8단계 구현] 시나리오의 endings[branchKey] 를 읽어 조건 맞는 branch 의 effects 실행.
+            // 현재 bookstore.js 의 resolved 단계 ending_scene 이벤트에서 사용.
+            // branch 선택 규칙은 triggerQuest 와 동일:
+            //   - condition.type === 'affinityGte' → 해당 NPC 호감도 비교
+            //   - condition.type === 'default'     → fallback
+            //   - 아무것도 안 맞으면 마지막 branch 사용
+            {
+              const branchKey = fx.branchKey;
+              const scenario = engineState.scenario;
+              if (!branchKey || !scenario || !scenario.endings || !scenario.endings[branchKey]) {
+                console.warn('[engine][effect] ending: 정의 없음', branchKey);
+                log.push({ type: fx.type, branchKey: branchKey, status: 'ending_not_found' });
+                break;
+              }
+              const endingDef = scenario.endings[branchKey];
+
+              let chosen = null;
+              if (Array.isArray(endingDef.branches)) {
+                for (const br of endingDef.branches) {
+                  if (!br.condition) continue;
+                  const c = br.condition;
+                  if (c.type === 'affinityGte') {
+                    const targetNpc = (state && state.npcs) ?
+                      state.npcs.find(function (n) { return n.id === c.npcId; }) : null;
+                    const aff = targetNpc ? (targetNpc.affinity || 0) : 0;
+                    if (aff >= (c.value || 0)) { chosen = br; break; }
+                  } else if (c.type === 'default') {
+                    chosen = br;
+                    break;
+                  }
+                }
+                if (!chosen && endingDef.branches.length > 0) {
+                  chosen = endingDef.branches[endingDef.branches.length - 1];
+                }
+              }
+
+              if (!chosen) {
+                console.warn('[engine][effect] ending: 적합 branch 없음', branchKey);
+                log.push({ type: fx.type, branchKey: branchKey, status: 'no_branch' });
+                break;
+              }
+
+              console.log('[engine][effect] ending 분기 선택:', branchKey, '→', chosen.key);
+              // flags 에도 기록 (나중에 분석/디버그용)
+              engineState.flags[branchKey + '_selected'] = chosen.key;
+
+              // 선택된 branch 의 effects 를 재귀 실행
+              if (Array.isArray(chosen.effects)) {
+                _applyEffects(chosen.effects, {
+                  source: 'ending:' + branchKey + ':' + chosen.key
+                });
+              }
+              log.push({
+                type: fx.type, branchKey: branchKey,
+                selectedBranch: chosen.key, status: 'ok'
+              });
+            }
             break;
+
+          default:
         }
       } catch (err) {
         console.error('[engine][effect] 실행 중 에러 (계속 진행):', fx, err);
