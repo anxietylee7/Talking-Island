@@ -178,6 +178,7 @@ renderNpcList();
 renderTabs();
 renderContent();
 renderCounts();
+if (typeof renderQuestBanner === 'function') renderQuestBanner(); // [9단계]
 
 // =========================================================
 // 애니메이션 루프
