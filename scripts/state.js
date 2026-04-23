@@ -8,6 +8,10 @@ const state = {
   phase: 'morning',
   selectedNpcId: null,
   chatHistory: {},
+  // [9.5단계] NPC별 오래된 대화의 장기 요약. 키: npcId, 값: 누적 요약 문자열.
+  //           chatHistory 가 20턴 넘으면 오래된 15턴을 요약해 여기에 누적하고
+  //           chatHistory 는 최근 5턴만 남긴다.
+  longTermSummary: {},
   rumors: [],
   reports: [],
   quests: [],
@@ -799,6 +803,19 @@ window.__closeZeta = function() {
         console.error('[state] evaluateQuestMilestones 실패 (무시):', err);
       });
   }
+
+  // [9.5단계] 장기 메모리 요약 — 임계치 초과 시 fire-and-forget.
+  // 마일스톤 판정과 병렬로 진행. 실패해도 다음 대화창 닫을 때 재시도.
+  if (closingNpcId) {
+    try {
+      summarizeOldHistory(closingNpcId);
+    } catch (err) {
+      console.warn('[memory] summarize trigger 에러 (무시):', err);
+    }
+  }
+
+  // [9.5단계] 상태 저장 (대화 종료 시점에 스냅샷)
+  try { persistState && persistState(); } catch(e) {}
 };
 
 window.__zetaSend = async function() {
@@ -867,7 +884,9 @@ window.__zetaSend = async function() {
     } catch (err) {
       console.error('[zetaSend] getDialogueContext 에러 (무시):', err);
     }
-    const systemFinal = system + engineContext;
+    // [9.5단계] 장기 메모리 주입
+    const memorySection = buildLongTermMemorySection(npcId);
+    const systemFinal = system + engineContext + memorySection;
     
     // history를 OpenAI messages 배열로 변환
     // user는 그대로, npc는 assistant로 매핑
@@ -942,8 +961,82 @@ function setLoading(flag, msg = '불러오는 중...') {
 }
 
 // =========================================================
-// Claude API 호출
+// [9.5단계] 장기 메모리 — 오래된 대화 요약
 // =========================================================
+// 파라미터 (20/15/5):
+//   - history 길이가 HISTORY_THRESHOLD(20) 넘으면 요약 트리거
+//   - 오래된 SUMMARIZE_CHUNK(15) 턴을 요약하고 chatHistory 에서 제거
+//   - 최근 RECENT_KEEP(5) 턴은 원문 유지
+// 요약은 누적: 기존 summary 가 있으면 "기존 요약 + 이번 15턴" 을 합쳐 새 요약 생성.
+// 실패해도 게임엔 영향 없음 — 기존 상태 그대로 유지.
+//
+// 호출 시점: __closeZeta 에서 fire-and-forget 비동기로 시작.
+//           유저가 다음 대화 열 때쯤엔 대부분 완료됨.
+
+const MEM_HISTORY_THRESHOLD = 20;
+const MEM_SUMMARIZE_CHUNK   = 15;
+const MEM_RECENT_KEEP       = 5;
+
+async function summarizeOldHistory(npcId) {
+  if (!npcId) return;
+  const history = state.chatHistory[npcId];
+  if (!Array.isArray(history) || history.length < MEM_HISTORY_THRESHOLD) return;
+  if (typeof callClaude !== 'function') return;
+
+  const npc = state.npcs.find(n => n.id === npcId);
+  if (!npc) return;
+
+  // 오래된 15턴을 뜯어냄
+  const oldChunk = history.slice(0, MEM_SUMMARIZE_CHUNK);
+  const convoStr = oldChunk.map(m => {
+    const who = m.role === 'user' ? '유저' : npc.name;
+    return who + ': ' + m.text;
+  }).join('\n');
+
+  const prevSummary = state.longTermSummary[npcId] || '';
+
+  const systemPrompt =
+    '너는 게임 대화 요약기다. 유저와 NPC의 대화 내역을 핵심만 남겨 간결한 한국어로 요약한다.\n' +
+    '규칙:\n' +
+    '1. 유저의 질문/선언/약속, NPC의 감정 반응, 두 사람이 합의한 사실을 보존한다.\n' +
+    '2. 단순 인사, 농담, 잡담은 생략한다.\n' +
+    '3. NPC가 비밀이나 속마음을 털어놓은 적이 있으면 반드시 포함한다.\n' +
+    '4. 감정적 뉘앙스(화남, 슬픔, 기쁨, 경계 등)는 간단히 한 단어로 병기한다.\n' +
+    '5. 서사 스포일러(예: 시나리오 진실)에 해당하는 부분이 대화에 등장했으면 "~~에 관한 얘기가 오갔다" 식으로 추상화 — 구체 내용은 누락해도 됨.\n' +
+    '6. 결과는 3~6문장의 자연스러운 한 단락으로. 불릿 금지.';
+
+  const userPromptParts = [];
+  if (prevSummary) {
+    userPromptParts.push('이전까지의 대화 요약:\n' + prevSummary);
+  }
+  userPromptParts.push('이번에 요약할 새 대화:\n' + convoStr);
+  userPromptParts.push('위 정보를 합쳐, 지금까지의 전체 대화에 대한 새 누적 요약을 위 규칙대로 작성해줘.');
+
+  try {
+    console.log('[memory] summarizing', npcId, 'old turns=' + oldChunk.length);
+    const newSummary = await callClaude(systemPrompt, userPromptParts.join('\n\n'), false, { temperature: 0.3 });
+    if (newSummary && newSummary.trim()) {
+      state.longTermSummary[npcId] = newSummary.trim();
+      // 요약 완료됐으니 chatHistory 에서 오래된 부분 삭제
+      state.chatHistory[npcId] = history.slice(MEM_SUMMARIZE_CHUNK);
+      console.log('[memory] summary updated for', npcId, '(history now', state.chatHistory[npcId].length + ' turns)');
+      // 저장소에도 반영
+      try { persistState && persistState(); } catch(e) {}
+    }
+  } catch (err) {
+    console.warn('[memory] summary failed (무시, 다음 기회에 재시도):', err);
+  }
+}
+
+// 대화 프롬프트에 붙일 "장기 메모리 섹션" 조립. 요약 없으면 빈 문자열.
+function buildLongTermMemorySection(npcId) {
+  const s = state.longTermSummary[npcId];
+  if (!s) return '';
+  return '\n\n[지금까지 유저와 나눴던 대화 요약 (기억)]\n' + s;
+}
+
+
+
 // [9단계 수정] 4번째 인자 options 추가. { temperature: 0~2 } 형태.
 //   temperature 미지정 시 서버(api/chat.js)의 기본값 0.85 유지.
 //   판정처럼 일관성이 중요한 호출은 낮은 값(예: 0.2) 전달.
@@ -995,3 +1088,152 @@ async function callClaude(systemPrompt, userPromptOrMessages, expectJSON = false
 }
 
 // =========================================================
+
+// =========================================================
+// [9.5단계] sessionStorage 영속화
+// =========================================================
+// 범위: 한 탭(브라우저 세션) 내에서만 유지. 탭 닫으면 자동 삭제.
+// 즉 F5 새로고침엔 살아남고, 탭/창 닫으면 사라짐 — 요구사항에 정확히 부합.
+//
+// 저장 대상:
+//   - 게임 상태: day, npcs(동적 필드만), chatHistory, longTermSummary,
+//               rumors, reports, quests
+//   - 엔진 상태: currentStage, sleepCount, completedEvents, resolvedQuests,
+//               flags, injectedContext, seedReports, questMilestones
+//
+// ⚠️ Set 객체는 JSON 직렬화 안 됨 → 저장 시 Array 로 변환, 복구 시 Set 으로 역변환.
+// ⚠️ 스키마 바뀌면 구버전 저장본은 폐기 → PERSIST_VERSION 으로 관리.
+//
+// 디버그: 콘솔에서 window.__resetSession() 호출하면 저장본 삭제 + 새로고침.
+
+const PERSIST_KEY     = 'talking-island-session';
+const PERSIST_VERSION = 1;
+
+function persistState() {
+  try {
+    if (!state || !state.npcs) return;
+
+    // 엔진 상태 뽑아오기 (Set 은 Array 로)
+    let engineSnapshot = null;
+    if (window.scenarioEngine && window.scenarioEngine.state) {
+      const es = window.scenarioEngine.state;
+      const questMilestonesObj = {};
+      if (es.questMilestones) {
+        for (const [qid, setVal] of Object.entries(es.questMilestones)) {
+          questMilestonesObj[qid] = Array.from(setVal || []);
+        }
+      }
+      engineSnapshot = {
+        currentStage:    es.currentStage,
+        sleepCount:      es.sleepCount,
+        completedEvents: Array.from(es.completedEvents || []),
+        resolvedQuests:  Array.from(es.resolvedQuests  || []),
+        flags:           es.flags || {},
+        injectedContext: es.injectedContext || {},
+        seedReports:     es.seedReports || {},
+        questMilestones: questMilestonesObj,
+      };
+    }
+
+    const snapshot = {
+      version: PERSIST_VERSION,
+      savedAt: Date.now(),
+      game: {
+        day: state.day,
+        phase: state.phase,
+        timeOfDay: state.timeOfDay,
+        storyOpeningShown: state.storyOpeningShown,
+        // NPC 는 id + 동적 필드만 저장 (정적 데이터는 data.js 원본 사용)
+        npcs: state.npcs.map(n => ({
+          id: n.id, affinity: n.affinity, dreamProgress: n.dreamProgress, level: n.level,
+        })),
+        chatHistory: state.chatHistory || {},
+        longTermSummary: state.longTermSummary || {},
+        rumors: state.rumors || [],
+        reports: state.reports || [],
+        quests: state.quests || [],
+      },
+      engine: engineSnapshot,
+    };
+    sessionStorage.setItem(PERSIST_KEY, JSON.stringify(snapshot));
+  } catch (err) {
+    console.warn('[persist] 저장 실패 (무시):', err);
+  }
+}
+
+// 페이지 로드 시 호출. 반환값: true=복구 성공, false=복구 안 함(fresh 시작)
+function restoreState() {
+  try {
+    const raw = sessionStorage.getItem(PERSIST_KEY);
+    if (!raw) return false;
+    const snap = JSON.parse(raw);
+
+    if (!snap || snap.version !== PERSIST_VERSION) {
+      console.warn('[persist] 버전 불일치로 저장본 폐기. saved=', snap && snap.version, ' current=', PERSIST_VERSION);
+      sessionStorage.removeItem(PERSIST_KEY);
+      return false;
+    }
+
+    // 게임 상태 복구
+    const g = snap.game || {};
+    state.day       = g.day       !== undefined ? g.day       : state.day;
+    state.phase     = g.phase     || state.phase;
+    state.timeOfDay = g.timeOfDay !== undefined ? g.timeOfDay : state.timeOfDay;
+    state.storyOpeningShown = !!g.storyOpeningShown;
+
+    // NPC: id 로 매칭해서 동적 필드 덮어쓰기 (정적 필드는 data.js 원본 유지)
+    if (Array.isArray(g.npcs) && state.npcs.length > 0) {
+      const saved = {};
+      g.npcs.forEach(n => { saved[n.id] = n; });
+      state.npcs.forEach(n => {
+        if (saved[n.id]) {
+          n.affinity      = saved[n.id].affinity      ?? n.affinity;
+          n.dreamProgress = saved[n.id].dreamProgress ?? n.dreamProgress;
+          n.level         = saved[n.id].level         ?? n.level;
+        }
+      });
+    }
+    state.chatHistory     = g.chatHistory     || {};
+    state.longTermSummary = g.longTermSummary || {};
+    state.rumors          = g.rumors          || [];
+    state.reports         = g.reports         || [];
+    state.quests          = g.quests          || [];
+
+    // 엔진 상태 복구 (엔진이 먼저 로드·초기화돼 있어야 함 — 스크립트 순서 보장됨)
+    if (snap.engine && window.scenarioEngine && window.scenarioEngine.state) {
+      const es = window.scenarioEngine.state;
+      const e  = snap.engine;
+      if (e.currentStage)                es.currentStage = e.currentStage;
+      if (typeof e.sleepCount === 'number') es.sleepCount  = e.sleepCount;
+      es.completedEvents = new Set(Array.isArray(e.completedEvents) ? e.completedEvents : []);
+      es.resolvedQuests  = new Set(Array.isArray(e.resolvedQuests)  ? e.resolvedQuests  : []);
+      es.flags           = e.flags || {};
+      es.injectedContext = e.injectedContext || {};
+      es.seedReports     = e.seedReports || {};
+      es.questMilestones = {};
+      if (e.questMilestones && typeof e.questMilestones === 'object') {
+        for (const [qid, arr] of Object.entries(e.questMilestones)) {
+          es.questMilestones[qid] = new Set(Array.isArray(arr) ? arr : []);
+        }
+      }
+      // 복구 후 activeEvents 재계산 (completedEvents + currentStage 기준)
+      try { window.scenarioEngine.manageActiveEvents(); } catch(e) {}
+    }
+
+    console.log('[persist] 복구 완료. day=' + state.day +
+                ', stage=' + (window.scenarioEngine && window.scenarioEngine.currentStage) +
+                ', savedAt=' + new Date(snap.savedAt).toLocaleTimeString());
+    return true;
+  } catch (err) {
+    console.error('[persist] 복구 실패, 저장본 폐기:', err);
+    try { sessionStorage.removeItem(PERSIST_KEY); } catch(e) {}
+    return false;
+  }
+}
+
+// 디버그: 콘솔에서 window.__resetSession() 호출하면 저장본 삭제 + 새로고침
+window.__resetSession = function () {
+  try { sessionStorage.removeItem(PERSIST_KEY); } catch(e) {}
+  console.log('[persist] 세션 리셋. 새로고침합니다...');
+  location.reload();
+};
