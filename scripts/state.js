@@ -16,8 +16,9 @@ const state = {
   loading: false,
   viewMode: 'village',
   currentInterior: null,
-  // 시나리오 진행 상태
-  storyStage: 'day1', // day1 -> day2_triggered -> quest_active -> resolved
+  // [8단계 제거] storyStage 필드 삭제. 시나리오 엔진의 currentStage 로 일원화.
+  //              참조는 scenarioEngine.state.currentStage 로 대체.
+  //              값 매핑: day1→dormant, day2_triggered→triggered, 나머지 동일.
   storyOpeningShown: false,
   // 유저 아바타 상태
   user: {
@@ -477,10 +478,10 @@ const ASSET_SLOTS = {
     'somi_natural', 'luru_natural',
   ],
   evidence: [
-    'chaka_photo_evidence', 'bamtol_ledger', 'missing_book_shelf', 
-    'photostudio_window', 'book_reservation_slip', 'bookclub_poster',
+    'chaka_photo_evidence', 'missing_book_shelf',
+    'photostudio_window', 'bookclub_poster',
     'missing_book_found',
-    'yami_backpack', // 추가: 설계 신규 증거 (8단계에서 bamtol_ledger, book_reservation_slip 정리 예정)
+    'yami_backpack', // [8단계] bamtol_ledger, book_reservation_slip 제거됨 (엔진-시나리오로 일원화)
   ],
 };
 
@@ -506,10 +507,8 @@ const ASSET_META = {
   somi_natural: { emoji: '🌸', label: '솜이 평소' },
   luru_natural: { emoji: '☕', label: '루루 평소' },
   chaka_photo_evidence: { emoji: '📷', label: '차카 야경사진' },
-  bamtol_ledger: { emoji: '📖', label: '서점 장부' },
   missing_book_shelf: { emoji: '📚', label: '빈 선반' },
   photostudio_window: { emoji: '🖼️', label: '사진관 쇼윈도' },
-  book_reservation_slip: { emoji: '🎫', label: '야미 예약증' },
   bookclub_poster: { emoji: '📝', label: '독서모임 포스터' },
   missing_book_found: { emoji: '📖', label: '선반 밑 책' },
   yami_backpack: { emoji: '🎒', label: '야미의 가방' }, // 추가: 설계 신규 증거
@@ -796,19 +795,13 @@ window.__zetaSend = async function() {
   
   try {
     state.loading = true;
-    let storyContext = '';
-    if (npc.isStory) {
-      const stage = state.storyStage;
-      if (npc.id === 'chaka') {
-        storyContext = `\n\n[배경 - 너는 사진사 차카다]\n- 너는 어젯밤 사진관 앞에서 야경 사진을 찍었다.\n- 나중에 사진을 본 밤톨이 "야미가 책을 훔쳤다"고 오해했다는 걸 ${stage === 'day1' ? '아직 모른다' : '알게 되었다'}.\n- 너는 단지 야경이 아름다워서 찍었을 뿐이고, 야미가 뭘 하는지는 잘 못 봤다.\n- ${stage === 'quest_active' || stage === 'day2_triggered' ? '지금은 상황이 혼란스러워서 사진을 내려야 할지 고민 중이다.' : ''}`;
-      } else if (npc.id === 'yami') {
-        storyContext = `\n\n[배경 - 너는 문학도 학생 야미다]\n- 너는 밤톨 서점에 책('별의 시간')을 예약했고, 뒷문 열쇠를 받아 밤에 책을 픽업했다. 훔친 게 아니다.\n- 독서 모임을 준비 중이고, 첫 모임 장소로 밤톨 서점을 빌리기로 했었다.\n- ${stage === 'day2_triggered' ? '오늘 도둑이라는 소문을 듣고 큰 충격을 받았다. 억울하고 슬프다.' : ''}\n- ${stage === 'quest_active' ? '밤톨이 독서 모임 장소 대여를 거절했다. 꿈이 흔들린다.' : ''}\n- ${stage === 'resolved' ? '사건이 마무리됐다.' : ''}`;
-      } else if (npc.id === 'bamtol') {
-        storyContext = `\n\n[배경 - 너는 서점 주인 밤톨이다]\n- 너는 야미가 책을 "훔쳤다"고 믿고 있다. 차카의 야경 사진 한 장이 근거다.\n- 사실은 야미가 예약한 책이고, 너의 장부에 기록이 있다. 하지만 감정이 앞서서 확인을 못 하고 있다.\n- 심지어 장부에 기록되지 않은 다른 책 한 권도 사라져서 더 의심하고 있다.\n- ${stage === 'day2_triggered' ? '지금 화가 나 있고, 누구든 이 얘기를 꺼내면 방어적이다.' : ''}\n- ${stage === 'quest_active' ? '야미가 독서 모임 장소를 빌려달라고 했지만 거절했다.' : ''}`;
-      }
-      storyContext += `\n\n답변 시작 또는 끝에 [감정:natural|happy|sad|surprised|angry|thinking] 태그를 붙여서 네 현재 감정을 표현해. 예: "그건 말이지... [감정:angry]"`;
-    }
-    
+    // [8단계 제거] NPC별 storyStage 기반 하드코딩 storyContext 블록 삭제.
+    //              엔진의 getDialogueContext 가 전담 (아래 systemFinal 조립부).
+    // 감정 태그 지시사항만 isStory NPC 대상으로 유지 (이건 대화 포맷 규칙이라 엔진 밖에 있어야 맞음).
+    const emotionDirective = npc.isStory
+      ? '\n\n답변 시작 또는 끝에 [감정:natural|happy|sad|surprised|angry|thinking] 태그를 붙여서 네 현재 감정을 표현해. 예: "그건 말이지... [감정:angry]"'
+      : '';
+
     const system = `너는 아기자기한 동네 게임의 NPC다. 캐주얼하고 자연스러운 톤으로 짧게 대답해.
 
 너의 정보:
@@ -822,13 +815,11 @@ window.__zetaSend = async function() {
 규칙:
 - 1-2문장만
 - 말버릇을 자주 붙여
-- 호감도 낮으면 거리감 있게, 높으면 친근하게${storyContext}
+- 호감도 낮으면 거리감 있게, 높으면 친근하게${emotionDirective}
 
 최근 동네 소문: ${state.rumors.slice(-3).map(r => r.text).join(' / ') || '없음'}`;
 
-    // [7단계] 시나리오 엔진이 제공하는 단계별/임시 배경을 system 프롬프트 뒤에 concat.
-    // Q1=C 결정: 기존 하드코딩된 storyContext 는 유지하고 엔진 출력을 추가. 8단계에서 하드코딩 제거 예정.
-    // 엔진 로드 실패 / 일반 NPC 케이스에는 빈 문자열 반환되므로 영향 없음.
+    // [7단계] 엔진 배경 concat. [8단계] 하드코딩 제거로 엔진이 storyContext 전담.
     let engineContext = '';
     try {
       if (window.scenarioEngine && typeof window.scenarioEngine.getDialogueContext === 'function') {
@@ -877,17 +868,11 @@ window.__zetaSend = async function() {
     document.getElementById('zeta-affinity').textContent = npc.affinity;
     
     renderNpcList();
-    
-    // 특정 키워드 트리거 — 증거 자동 팝업
-    if (npc.id === 'chaka' && /사진|야경|찍/.test(cleanResponse) && !collectedEvidence.has('chaka_photo_evidence')) {
-      setTimeout(() => showEvidencePopup('chaka_photo_evidence', '차카가 찍은 그 날 밤의 사진'), 1500);
-    }
-    if (npc.id === 'yami' && /독서 모임|독서모임|포스터/.test(cleanResponse) && !collectedEvidence.has('bookclub_poster')) {
-      setTimeout(() => showEvidencePopup('bookclub_poster', '야미가 준비하던 독서 모임 포스터'), 1500);
-    }
-    if (npc.id === 'bamtol' && /장부|예약/.test(cleanResponse) && !collectedEvidence.has('bamtol_ledger')) {
-      setTimeout(() => showEvidencePopup('bamtol_ledger', '밤톨 서점의 장부'), 1500);
-    }
+
+    // [8단계 제거] 키워드 기반 증거 자동 팝업 블록 3개 삭제.
+    // 사유: 엔진의 낮 이벤트 (handleNpcApproach → showEvidencePopup effect) 가
+    //       동일 기능을 시나리오 데이터 기반으로 제공. 두 시스템이 동시에 팝업을
+    //       띄우면 UI 큐에 중복 enqueue 되어 혼란. 엔진 쪽으로 일원화.
   } catch (err) {
     console.error('[zetaSend] error', err);
     try { typing.remove(); } catch(e) {}
