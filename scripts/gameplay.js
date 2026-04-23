@@ -91,7 +91,14 @@ async function sendChatMessage(text) {
     } catch (err) {
       console.error('[sendChatMessage] getDialogueContext 에러 (무시):', err);
     }
-    const systemFinal = system + engineContext;
+    // [9.5단계] 장기 메모리 주입 (state.js 가 제공)
+    let memorySection = '';
+    try {
+      if (typeof buildLongTermMemorySection === 'function') {
+        memorySection = buildLongTermMemorySection(npcId) || '';
+      }
+    } catch (err) { /* ignore */ }
+    const systemFinal = system + engineContext + memorySection;
 
     // history를 OpenAI messages 배열로 변환
     const messagesArr = history.slice(-6).map(m => ({
@@ -308,6 +315,9 @@ ${targetRumors.map(r => '- ' + r.text).join('\n')}
     renderCounts();
     renderNpcList();
     renderQuestBanner(); // [9단계] 밤 지난 후 배너 갱신 (단계 전환됐을 수 있음)
+
+    // [9.5단계] 밤 지난 후 상태 저장
+    try { persistState && persistState(); } catch(e) {}
 
     // 스토리 연출 하드코딩 제거됨. 엔진 autoOnStageEnter 가 증거팝업/스토리모달/퀘스트
     // 전부 담당하며 UI 큐를 통해 순차 표시됨.
