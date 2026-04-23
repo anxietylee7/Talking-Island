@@ -218,9 +218,12 @@ window.BOOKSTORE_SCENARIO = {
     dormant: [
       {
         id: 'yami_night_pickup',
-        primaryNpcId: 'yami', // [8단계] 리포트 UI 가 NPC 이모지/이름 찾을 때 사용
+        primaryNpcId: 'yami',
         scene:
           '야미가 서점에서 예약한 책을 집다가 옆에 있던 책이 떨어졌다.',
+        // [8단계] publicSummary: 플레이어 리포트에 표시되는 "목격자 시점의 공개 사실".
+        // scene (내부용 진실) 과 분리. AI 호출 생략 + 스포일러 방지.
+        publicSummary: '야미가 서점에서 예약한 책을 픽업했다.',
         effects: [],
       },
       {
@@ -228,6 +231,7 @@ window.BOOKSTORE_SCENARIO = {
         primaryNpcId: 'chaka',
         scene:
           '차카가 야경을 찍고 있는데, 우연히 서점 안의 야미가 책을 가방에 집어넣는 모습도 찍혔다.',
+        publicSummary: '차카가 밤에 돌아다니며 마을의 야경을 찍었다.',
         effects: [],
       },
     ],
@@ -239,6 +243,7 @@ window.BOOKSTORE_SCENARIO = {
         scene:
           '야미가 자기 가방을 들고 밤톨을 찾아가 오해를 해명하려 한다. ' +
           '가방 안에는 예약한 책 한 권만 있다. 밤톨은 대화를 거부한다.',
+        publicSummary: '야미는 오해를 풀기 위해 밤톨의 서점을 찾아갔지만 밤톨은 만남을 거절했다.',
         effects: [
           { type: 'showEvidencePopup', assetKey: 'yami_backpack', caption: '야미의 가방 — 책은 한 권뿐' },
           { type: 'changeAffinity', npcId: 'bamtol', delta: -2 },
@@ -247,9 +252,27 @@ window.BOOKSTORE_SCENARIO = {
     ],
 
     quest_active: [
-      { id: 'bamtol_alone', primaryNpcId: 'bamtol', scene: '밤톨이 집에서 혼자 장부를 뒤적이며 고민한다.', effects: [] },
-      { id: 'yami_alone',   primaryNpcId: 'yami',   scene: '야미가 집에서 독서모임 포스터를 붙잡고 고민한다.', effects: [] },
-      { id: 'chaka_alone',  primaryNpcId: 'chaka',  scene: '차카가 사진관에서 자기 사진을 보며 후회한다.', effects: [] },
+      {
+        id: 'bamtol_alone',
+        primaryNpcId: 'bamtol',
+        scene: '밤톨이 집에서 혼자 장부를 뒤적이며 고민한다.',
+        publicSummary: '밤톨의 서점에 밤 늦게까지 불이 켜져 있다. 뭔가 고민하는 듯한 밤톨의 모습이 보였다.',
+        effects: [],
+      },
+      {
+        id: 'yami_alone',
+        primaryNpcId: 'yami',
+        scene: '야미가 집에서 독서모임 포스터를 붙잡고 고민한다.',
+        publicSummary: '야미의 울음 소리가 집 밖으로 울려퍼졌다.',
+        effects: [],
+      },
+      {
+        id: 'chaka_alone',
+        primaryNpcId: 'chaka',
+        scene: '차카가 사진관에서 자기 사진을 보며 후회한다.',
+        publicSummary: '차카는 사진관에서 머리를 부여잡고 괴로워하고 있었다. 본인의 사진이 문제가 된 것 같아 자책하는 모습이었다.',
+        effects: [],
+      },
     ],
 
     // resolved 단계는 밤 시뮬레이션 없음 (엔딩 처리로 대체)
