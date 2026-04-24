@@ -1,4 +1,5 @@
 function selectNpc(npcId) {
+  const npc = state.npcs.find(n => n.id == npcId);function selectNpc(npcId) {
   const npc = state.npcs.find(n => n.id == npcId);
   if (!npc) return;
 
@@ -430,7 +431,64 @@ function renderQuestBanner() {
     banner.classList.add('highlight');
     banner.dataset.prevText = info.text;
   }
+  // [피드백 #3] 배너 갱신 시 마일스톤 HUD 도 같이 갱신 — 호출 지점 일원화.
+  if (typeof renderQuestMilestonesHUD === 'function') {
+    try { renderQuestMilestonesHUD(); } catch (e) { /* ignore */ }
+  }
 }
+
+// [피드백 #3] 퀘스트 진행도 HUD — 상단 배너 바로 아래에 상시 표시.
+//   활성 스토리 퀘스트의 마일스톤 체크리스트를 요약해 보여줌.
+//   퀘스트 탭 내부 체크리스트와 같은 데이터. 단 탭을 안 열어도 상시 노출.
+//   renderQuestBanner 가 갱신되는 모든 시점에 함께 호출.
+function renderQuestMilestonesHUD() {
+  const hud = document.getElementById('quest-milestones-hud');
+  if (!hud) return;
+
+  // 활성 스토리 퀘스트 하나 찾음. 없으면 숨김.
+  const activeQuest = (state.quests || []).find(function (q) {
+    return q && q.isStory && !q.resolved;
+  });
+  if (!activeQuest || !window.scenarioEngine || !window.scenarioEngine.scenario) {
+    hud.style.display = 'none';
+    return;
+  }
+  const qdef = (window.scenarioEngine.scenario.quests || {})[activeQuest.id];
+  if (!qdef || !Array.isArray(qdef.milestones)) {
+    hud.style.display = 'none';
+    return;
+  }
+
+  const achievedSet = (window.scenarioEngine.state.questMilestones || {})[activeQuest.id] || new Set();
+  const total = qdef.milestones.length;
+  const threshold = qdef.resolveThreshold || total;
+  const achievedCount = achievedSet.size;
+
+  // 모두 달성(resolved 직전)이면 숨김 — 배너가 "야미에게 가서 소식을 전해주세요" 로 전환됨.
+  if (achievedCount >= threshold) {
+    hud.style.display = 'none';
+    return;
+  }
+
+  const titleEl = hud.querySelector('.milestones-hud-title');
+  const countEl = hud.querySelector('.milestones-hud-count');
+  const listEl = hud.querySelector('.milestones-hud-list');
+  if (titleEl) titleEl.textContent = '진행도';
+  if (countEl) countEl.textContent = achievedCount + '/' + threshold;
+  if (listEl) {
+    listEl.innerHTML = qdef.milestones.map(function (m) {
+      const done = achievedSet.has(m.id);
+      return '<div class="milestones-hud-row ' + (done ? 'done' : '') + '">' +
+        '<span class="milestones-hud-check">' + (done ? '✅' : '⬜') + '</span>' +
+        '<span class="milestones-hud-text">' + escapeHtml(m.description) + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  hud.style.display = 'block';
+}
+// 전역 노출
+window.renderQuestMilestonesHUD = renderQuestMilestonesHUD;
 
 function renderNpcList() {
   const list = document.getElementById('npc-list');
