@@ -227,31 +227,46 @@ window.BOOKSTORE_SCENARIO = {
           { all: ['first_chaka_visit', 'first_bamtol_visit'] },
         ],
         effects: [
-          // 1) 장면 묘사 — [플레이스홀더] 단계 2에서 NPC 말풍선 연출로 교체 예정.
-          //    현재는 유저에게 "이 장면이 일어났다"는 최소 정보만 전달.
-          { type: 'showStoryModal',
-            title: '사진관 앞',
-            body:
-              '사진관 앞에서 밤톨과 차카가 쇼윈도의 사진을 놓고 이야기를 나누고 있는 듯하다.\n\n' +
-              '[이 장면은 추후 NPC 간 말풍선 대화 연출로 교체될 예정입니다.]' },
+          // [시뮬 A 수정] 효과 순서 재배치 — 팝업 → 컷신 → 잔여 순.
+          //   이유: 컷신 중 차카가 "어제 밤에 찍은 거에요" 라고 말할 때 유저가 어떤
+          //         사진인지 이미 봐야 대화가 이해됨. 사진 먼저 노출한 뒤 컷신 재생.
+          //
+          //   실행 흐름:
+          //     1) showEvidencePopup → _uiQueue 에 들어가 팝업 표시
+          //     2) playCutscene → _applyEffects 가 이 시점에 루프 break,
+          //        뒤 effects 를 followUp 으로 수집 → startCutsceneSimulation 호출.
+          //        startCutsceneSimulation 은 UI 큐가 비워질 때까지 (팝업 닫힘) 대기한 뒤
+          //        실제 시뮬 재생 시작.
+          //     3) 컷신 종료 → runCutscenePostEffects 가 followUp 실행 + openZeta.
+          //
+          //   [캡션 중립화] 이전: "차카의 셔터에 남은 야미의 모습" — 스포 정도 강함
+          //                 수정: 사진관 쇼윈도 맥락만 명시. 유저가 사진을 "처음 본다"는
+          //                       상황에 맞게 중립 톤으로.
 
-          // 2) 사진 본체 증거 팝업
+          // 1) 사진 본체 증거 팝업 — 컷신 전에 노출.
           { type: 'showEvidencePopup', assetKey: 'chaka_photo_evidence',
-            caption: '차카의 셔터에 남은 야미의 모습' },
+            caption: '사진관 쇼윈도에 걸린 어젯밤 사진' },
+
+          // 2) 컷신 재생 (기존 showStoryModal 플레이스홀더 교체).
+          //    openZetaNpcId: 컷신 끝난 뒤 자동으로 열 대화창의 NPC id.
+          //    이 이벤트는 "차카 접근" 시 발동되므로 컷신 후 차카 대화창이 자연스러움.
+          { type: 'playCutscene',
+            cutsceneId: 'chaka_bamtol_photo_confrontation',
+            openZetaNpcId: 'chaka' },
 
           // 3) seed 제거됨 — 사용자 설계: 왜곡은 대화(차카 "야미가 책을 많이 사더라" +
           //    밤톨의 "어제 픽업은 1권뿐" 해석)로 자연 발생. AI 장면 생성 불필요.
 
-          // 4) 소문 생성 (익명 소문체)
+          // 4) 소문 생성 (익명 소문체) — 컷신 뒤 조용히 실행 (followUp)
           { type: 'addRumor',
             textTemplate: '야미가 어젯밤 밤톨 서점에서 책을 훔쳐갔다더라.',
             aboutNpcId: 'yami' },
 
-          // 5) 호감도 변동 (기존 chaka_bamtol_distortion 에서 이관)
+          // 5) 호감도 변동 (기존 chaka_bamtol_distortion 에서 이관) — followUp
           { type: 'changeAffinity', npcId: 'bamtol', delta: -5 },
           { type: 'changeAffinity', npcId: 'yami',   delta: -3 },
 
-          // 6) 두 NPC 컨텍스트 주입 (덮어쓰기. first_chaka_visit / first_bamtol_visit 것을 교체)
+          // 6) 두 NPC 컨텍스트 주입 (덮어쓰기. first_chaka_visit / first_bamtol_visit 것을 교체) — followUp
           { type: 'injectNpcContext', npcId: 'chaka',
             text: '방금 사진관 앞에서 밤톨과 만나 어젯밤 사진을 함께 보며 ' +
                   '이야기를 나누었다. 우연히 야미가 찍힌 사진을 보며, ' +
@@ -272,9 +287,9 @@ window.BOOKSTORE_SCENARIO = {
                   '이 확신이 강해진 상태. 장부는 확인하지 않았고, 감정이 앞서고 ' +
                   '있으며, 이 길로 야미를 찾아가 따질 생각이다.' },
 
-          // [Wave 1] 장면 후 차카 선발화.
-          // 주의: 이 이벤트는 "차카 접근" 시 발동 → 장면 모달 닫힌 후 대화창이 열리면
-          //       차카가 먼저 당황한 톤으로 상황 꺼내도록.
+          // [Wave 1] 장면 후 차카 선발화. — followUp
+          // 컷신 끝난 뒤 openZetaNpcId='chaka' 에 의해 자동으로 대화창이 열리면
+          // 차카가 이 미리 세팅된 말을 먼저 꺼냄.
           { type: 'npcSpeaksFirst', npcId: 'chaka',
             text: '...방금 밤톨 씨가 많이 화내셨네요. 저는 그냥 평소 얘기한 건데 ' +
                   '일이 이상하게 됐어요. 저도 당황스럽네요.' },
@@ -440,16 +455,23 @@ window.BOOKSTORE_SCENARIO = {
       {
         id: 'yami_confronts_bamtol',
         primaryNpcId: 'yami',
-        // [4차] 2차 서사 정합성: 낮에 밤톨이 야미를 찾아가 화냈음.
-        // 그 밤에 야미가 가방을 들고 밤톨을 찾아가 해명 시도. 밤톨은 대화 거부.
+        // [시뮬 B 수정] 루트 변경: 문 안 열어줌 → 서점 앞 대면 대화 → 오해 굳어짐.
+        //   야미가 밤톨을 찾아가 가방을 직접 보여주며 해명하지만, 밤톨은
+        //   "책장에서 사라진 한 권" 을 근거로 받아들이지 않고 서점으로 들어가 버린다.
+        //   만남이 성사됐는데도 오해가 더 깊어지는 구조 — "거리가 아니라 해석이
+        //   갈등을 만든다" 는 작품 주제 강조.
         scene:
-          '야미가 가방을 들고 밤톨의 집 앞에 선다. 가방 안에는 어젯밤 픽업한 ' +
-          '예약 책 《별의 시간》 한 권만 들어 있다. 야미가 문을 두드려 ' +
-          '해명하려 하지만, 밤톨은 문을 열지 않는다.',
-        publicSummary: '야미는 오해를 풀기 위해 밤톨을 찾아갔지만 밤톨은 만나주지 않았다.',
+          '야미가 가방을 들고 서점 앞에 선다. 가방 안에는 어젯밤 픽업한 ' +
+          '예약 책 《별의 시간》 한 권만 들어 있다. 야미가 문을 두드리자 ' +
+          '밤톨이 나온다. 야미는 가방을 열어 보이며 "이 한 권뿐"이라고 해명하지만, ' +
+          '밤톨은 "그럼 책장에서 사라진 한 권은 뭐냐"며 다시 서점 안으로 들어가 버린다.',
+        publicSummary:
+          '야미가 밤톨을 찾아가 가방을 보이며 해명했지만, ' +
+          '밤톨은 사라진 책을 이유로 받아들이지 않았다.',
+        // [시뮬 B 수정] showEvidencePopup 제거 — 시뮬 B 스크립트 안에서
+        //   evidence 이벤트로 이미 팝업이 뜨므로 여기서 또 띄우면 중복됨.
+        //   changeAffinity 만 유지.
         effects: [
-          { type: 'showEvidencePopup', assetKey: 'yami_backpack',
-            caption: '야미의 가방 속 — 책은 한 권뿐' },
           { type: 'changeAffinity', npcId: 'bamtol', delta: -2 },
         ],
       },
@@ -745,19 +767,12 @@ window.BOOKSTORE_SCENARIO = {
         {
           // [4차 재설계] 밤톨 호감도 50 이상 — 유저가 밤톨을 설득에 성공한 느낌.
           // 유저와 밤톨이 함께 서점을 뒤지다 책장 아래에서 떨어진 책 발견.
+          // [시뮬 C 수정] showStoryModal / showEvidencePopup 제거됨.
+          //   시뮬 C (ENDING_SCRIPTS.high) 안에서 이미 장면과 evidence 팝업 재생.
+          //   여기 남은 effects 는 runEndingPostEffects 가 시뮬 종료 후 실행.
           key: 'high',
           condition: { type: 'affinityGte', npcId: 'bamtol', value: 50 },
           effects: [
-            { type: 'showStoryModal',
-              title: '함께 찾은 답',
-              body:
-                '밤톨이 말없이 당신과 함께 서점을 뒤지기 시작해요. ' +
-                '책장 뒤, 선반 아래, 먼지 낀 구석구석.\n\n' +
-                '그리고 한참 뒤, 책장 밑에서 떨어진 책 한 권을 당신이 발견해요.\n\n' +
-                '밤톨이 한참을 바라봐요. 그리곤 작게 한숨을 쉬어요.\n' +
-                '"...야미한테 사과해야겠네."' },
-            { type: 'showEvidencePopup', assetKey: 'missing_book_found',
-              caption: '책장 아래에서 발견된 책' },
             { type: 'changeAffinity', npcId: 'yami',   delta: +10 },
             { type: 'changeAffinity', npcId: 'bamtol', delta: +5 },
           ],
@@ -765,19 +780,11 @@ window.BOOKSTORE_SCENARIO = {
         {
           // 밤톨 호감도 50 미만 — 유저는 밤톨 설득에 충분히 신뢰를 얻지 못함.
           // 유저와 야미만 서점을 뒤져 책 발견, 증거 들고 밤톨 찾아감.
+          // [시뮬 C 수정] showStoryModal / showEvidencePopup 제거됨.
+          //   시뮬 C (ENDING_SCRIPTS.low) 안에서 이미 장면과 evidence 팝업 재생.
           key: 'low',
           condition: { type: 'default' },
           effects: [
-            { type: 'showStoryModal',
-              title: '증거는 조용히',
-              body:
-                '밤톨은 여전히 당신 말을 듣지 않았어요. 당신과 야미만 서점에 ' +
-                '다시 들어가 찬찬히 책장을 살폈어요.\n\n' +
-                '그리고 책장 아래에서 떨어진 책 한 권을 발견했죠.\n\n' +
-                '야미가 책을 들고 밤톨을 찾아가요. 밤톨은 말없이 책을 받아들고 ' +
-                '고개를 떨궈요. 사과는 어색했지만, 오해는 거기서 끝났어요.' },
-            { type: 'showEvidencePopup', assetKey: 'missing_book_found',
-              caption: '책장 아래에서 발견된 책' },
             { type: 'changeAffinity', npcId: 'yami',   delta: +5 },
             { type: 'changeAffinity', npcId: 'bamtol', delta: +3 },
           ],
