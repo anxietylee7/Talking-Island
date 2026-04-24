@@ -982,21 +982,17 @@
   /* ========================================================
    * [피드백 #3] 퀘스트 마일스톤 HUD
    * ========================================================
-   * 상단 #quest-banner 바로 아래 표시되는 상시 체크리스트.
-   * 배너와 톤 일관 — 크림/골드 계열 + 부드러운 그림자.
-   * 시뮬 중엔 배너와 함께 숨김 (body.sim-locked). */
+   * [재배치] 좌측 패널(#left-panel) 내부 최상단에 위치. 주민 목록 위.
+   *   이전: fixed positioning (top:110px 화면 중앙) — 상단 배너와 겹침.
+   *   수정: 좌측 패널의 문서 흐름 안에 배치 → 배너 및 다른 UI 와 충돌 없음.
+   * 시뮬 중엔 left-panel 자체가 숨겨지므로 HUD 도 자동 숨김 (별도 처리 불요).*/
   #quest-milestones-hud {
-    position: absolute;
-    top: 110px;         /* quest-banner top:66 + 높이 약 34 + 여백 10 */
-    left: 50%;
-    transform: translateX(-50%);
     background: linear-gradient(180deg, #fff9e6 0%, #fef3e7 100%);
     border: 1.5px solid #f4d484;
-    border-radius: 14px;
-    padding: 10px 14px;
-    box-shadow: 0 4px 14px rgba(180, 130, 40, 0.12);
-    width: min(340px, 80vw);
-    z-index: 29;      /* 배너(30) 보다 살짝 뒤 */
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 2px 8px rgba(180, 130, 40, 0.1);
+    margin-bottom: 12px;
   }
   .milestones-hud-header {
     display: flex;
@@ -1047,5 +1043,3 @@
   .milestones-hud-text {
     flex: 1;
   }
-  /* 시뮬 중엔 숨김 (배너와 동일 정책) */
-  body.sim-locked #quest-milestones-hud { display: none !important; }
