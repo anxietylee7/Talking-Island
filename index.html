@@ -56,6 +56,18 @@
   <span class="banner-progress"></span>
 </div>
 
+<!-- [피드백 #3] 퀘스트 진행도 체크리스트 — 상단 배너 바로 아래 상시 표시.
+     배너가 요약이라면 이 블록은 마일스톤 상세. 퀘스트 탭 안에도 같은 내용이
+     복제돼 있으나 유저가 탭을 열지 않아도 진행 상태를 늘 볼 수 있게 하기 위함.
+     활성 퀘스트 없으면 숨김. renderQuestMilestonesHUD() 가 내용 갱신. -->
+<div id="quest-milestones-hud" style="display:none">
+  <div class="milestones-hud-header">
+    <span class="milestones-hud-title"></span>
+    <span class="milestones-hud-count"></span>
+  </div>
+  <div class="milestones-hud-list"></div>
+</div>
+
 <div id="left-panel" class="panel">
   <div style="margin-bottom:10px">
     <div class="section-title">🐾 주민들</div>
