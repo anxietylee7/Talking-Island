@@ -303,6 +303,9 @@ function animate() {
     //   - mode 'cutscene' : 유저 등장 없는 컷신 (시뮬 A) → hide (기존 동작)
     //   - mode 'ending'   : 유저가 야미와 함께 서점으로 감 → [피드백 #7] visible
     //     스크립트에 moveUser 이벤트가 있으므로 visible 상태여야 함.
+    //   [피드백 #5] 엔딩 모드에선 updateUser 도 호출해야 moveUser 이벤트가 실제로 동작.
+    //     moveUser 이벤트는 state.user.targetPos 만 세팅하고, 실제 이동 보간은 updateUser 에서.
+    //     시뮬 중엔 지금까지 updateUser 가 호출 안 됐음 → moveUser 받은 유저가 그 자리에 멈춤.
     if (state.simulation.active) {
       const simMode = state.simulation.mode;
       const shouldShowUser = (simMode === 'ending');
@@ -312,6 +315,10 @@ function animate() {
       runSimulationTick(dt);
       // 조명만 갱신 (시간 흐름에 따른 하늘/조명)
       updateSimulationLighting();
+      // 엔딩 모드에선 유저 이동 보간 처리 (moveUser 이벤트 → 실제 이동).
+      if (shouldShowUser) {
+        updateUser(dt);
+      }
     } else {
       if (state.user.mesh) state.user.mesh.visible = true;
       updateUser(dt);
