@@ -111,6 +111,14 @@
     // evaluateQuestMilestones 가 대화창 닫을 때마다 AI 판정 결과로 채움.
     // 퀘스트 해결 시에도 유지됨 (엔딩 분기 판정 등에서 참고 가능).
     questMilestones: {},
+
+    // [피드백 1번 수정] 방금 끝난 밤의 리포트 스냅샷.
+    // 구조: [{ seedId, line, primaryNpcId }, ...]
+    // 용도: Day 2 아침 "어젯밤의 소식" 팝업(showReportsModal effect)이
+    //      이 필드를 읽어서 방금 밤의 내용만 정확히 표시.
+    //      (state.reports 를 읽는 기존 방식은 실행 순서 문제로 비어있어서 실패.)
+    // 초기화: runNightSimulation(dryRun:false) 시작 시마다 교체.
+    lastNightReports: [],
   };
 
 
@@ -135,6 +143,7 @@
     engineState.injectedContext = {};
     engineState.seedReports = {};
     engineState.questMilestones = {};
+    engineState.lastNightReports = []; // [피드백 1번]
 
     console.log(
       '[engine] scenario loaded:',
@@ -441,6 +450,21 @@
     // ── effects 실행
     const executedEffects = [];
     if (!dryRun) {
+      // [피드백 1번 수정] lastNightReports 스냅샷 저장.
+      // 이 시점은 checkStageTransition 호출 "전". 따라서 단계 전환으로 발동되는
+      // showReportsModal(d2_morning_reports_popup) 이 이 스냅샷을 읽으면 정확히
+      // "방금 끝난 밤"의 내용만 보게 됨.
+      engineState.lastNightReports = reports
+        .filter(function (r) { return r && r.line; })
+        .map(function (r) {
+          var seedDef = seeds.find(function (s) { return s.id === r.seedId; });
+          return {
+            seedId: r.seedId,
+            line: r.line,
+            primaryNpcId: (seedDef && seedDef.primaryNpcId) || null,
+          };
+        });
+
       for (const seed of seeds) {
         if (seed.effects && seed.effects.length) {
           const ran = _applyEffects(seed.effects, { source: 'nightSeed:' + seed.id });
@@ -654,16 +678,21 @@
           _showNextUi();
         }
       } else if (next.kind === 'reports') {
-        // [카테고리 1 신규] Day 2 아침 "어젯밤의 소식" 팝업.
-        // state.reports 배열의 모든 항목을 텍스트로 이어붙여 showStoryModal 로 표시.
+        // [카테고리 1 신규 → 피드백 1번 수정]
+        // Day 2 아침 "어젯밤의 소식" 팝업.
+        // 기존: state.reports 를 읽음 → 실행 순서상 아직 비어있어서 "특별한 소식은 없었어요" 로 표시됨.
+        // 수정: engineState.lastNightReports (runNightSimulation 이 방금 저장한 스냅샷) 을 읽음.
+        //       "방금 밤에 있었던 일"만 정확히 보여주는 의도와도 부합.
         try {
           let body = next.bodyIntro ? next.bodyIntro + '\n\n' : '';
-          if (typeof state !== 'undefined' && state && Array.isArray(state.reports) && state.reports.length > 0) {
-            body += state.reports.map(function (r) {
-              const npcName = (state.npcs.find(function (n) { return n.id === r.aboutNpcId; }) || {}).name
-                              || (r.npcName || '');
+          const src = (engineState.lastNightReports || []);
+          if (src.length > 0) {
+            body += src.map(function (r) {
+              const npcName = (state && Array.isArray(state.npcs))
+                ? ((state.npcs.find(function (n) { return n.id === r.primaryNpcId; }) || {}).name || '')
+                : '';
               const prefix = npcName ? '📋 ' + npcName + ': ' : '📋 ';
-              return prefix + (r.publicSummary || r.text || '(내용 없음)');
+              return prefix + (r.line || '(내용 없음)');
             }).join('\n\n');
           } else {
             body += '(특별한 소식은 없었어요.)';
