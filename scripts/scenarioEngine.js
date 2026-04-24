@@ -923,6 +923,17 @@
             }
             break;
 
+          // [Tier 2 #12 신규] 플래그 제거. yami_needs_help 같은 UI 용 플래그를
+          //   퀘스트 해결/엔딩 진입 시 꺼주기 위함.
+          case 'clearFlag':
+            if (fx.key && engineState.flags.hasOwnProperty(fx.key)) {
+              delete engineState.flags[fx.key];
+              log.push({ type: fx.type, key: fx.key, status: 'ok' });
+            } else {
+              log.push({ type: fx.type, key: fx.key, status: 'not_set' });
+            }
+            break;
+
           case 'triggerQuest':
             // [6단계 구현] 시나리오의 quests[questId] 정의를 읽어 state.quests 에 추가.
             // 야미의 현재 호감도를 보고 branches 중 적절한 것을 선택한다.
