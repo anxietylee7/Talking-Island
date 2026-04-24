@@ -192,8 +192,37 @@ function attach(id, event, fn) {
   if (!el) { console.warn('Element not found:', id); return; }
   el.addEventListener(event, fn);
 }
-attach('night-btn', 'click', advanceToNightAndMorning);
+// [피드백] night-btn 제거됨 — 버튼 자체가 DOM 에서 사라졌으므로 attach 불필요.
+//   밤 진입은 집 안 침대 클릭 → handleBedClick → startSleepSequence 로만 가능.
 attach('exit-interior', 'click', exitInterior);
+
+// [피드백] ESC 키로 대화 이력 오버레이 토글.
+//   또한 오버레이 자체의 닫기 버튼 바인딩.
+attach('chat-history-close', 'click', function () {
+  const ov = document.getElementById('chat-history-overlay');
+  if (ov) ov.style.display = 'none';
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('chat-history-overlay');
+    if (!ov) return;
+    const isOpen = ov.style.display !== 'none' && ov.style.display !== '';
+    if (isOpen) {
+      ov.style.display = 'none';
+    } else {
+      // zeta 대화창이나 다른 모달이 열려있으면 그쪽 우선 (ESC 다중 처리 주의).
+      // zeta 가 열려있을 때는 ESC 로 zeta 가 닫히게 두고, 오버레이는 안 열기.
+      const zetaOpen = document.getElementById('zeta-chat')
+        && document.getElementById('zeta-chat').classList.contains('show');
+      if (zetaOpen) return;
+      // 오버레이 열기 + 이력 리스트 렌더
+      if (typeof renderChatHistoryOverlay === 'function') {
+        try { renderChatHistoryOverlay(); } catch (err) { console.warn('[ESC overlay] render 실패', err); }
+      }
+      ov.style.display = 'flex';
+    }
+  }
+});
 
 // [9.5단계] 세션 복구 시도. 성공 시: 인트로 가챠 스킵하고 바로 마을 진입.
 (async function attemptSessionRestore() {
