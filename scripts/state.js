@@ -509,6 +509,14 @@ const CUTSCENE_SCRIPTS = {
     { id: 'c2_s1_poster', at: 0.05, type: 'narration',
       text: '야미가 가방에서 포스터 한 장을 꺼내 서점 앞에 섰어요.' },
 
+    // [피드백 #2 — Day 3 포스터 팝업] 나레이션 뒤에 포스터 evidence 팝업 (시뮬 일시정지).
+    //   유저가 포스터 실물을 확인한 뒤 닫으면 시뮬 재개 → 이어서 문이 열리는 장면.
+    //   이전 버전은 yami_retries_bookclub effects 첫 슬롯에 showEvidencePopup 이 있어
+    //   컷신 시작 전에 팝업이 떴으나, 사용자 요청 "시뮬 진행 시작 후" 로 여기로 이동.
+    { id: 'c2_s1b_poster_popup', at: 0.09, type: 'evidence',
+      assetKey: 'bookclub_poster',
+      caption: '"첫 모임 — 함께 읽을까요?"' },
+
     // 장면 2a (0.15~, 약 5초): 서점 문이 열림 — 먼저 나레이션으로 문 열리는 순간 알림.
     { id: 'c2_s2a_door_opens', at: 0.15, type: 'narration',
       text: '잠시 후, 서점 문이 열려요.' },
