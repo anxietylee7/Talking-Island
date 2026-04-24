@@ -101,7 +101,8 @@ async function sendChatMessage(text) {
     const systemFinal = system + engineContext + memorySection;
 
     // history를 OpenAI messages 배열로 변환
-    const messagesArr = history.slice(-6).map(m => ({
+    // [피드백 2번 수정] 최근 대화 윈도우 6턴 → 12턴. state.js __zetaSend 와 동일하게 맞춤.
+    const messagesArr = history.slice(-12).map(m => ({
       role: m.role === 'user' ? 'user' : 'assistant',
       content: m.text,
     }));
