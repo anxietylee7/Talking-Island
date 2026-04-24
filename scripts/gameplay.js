@@ -18,7 +18,13 @@ function selectNpc(npcId) {
   // state.cutscenePending=true 또는 state.simulation.active=true 상태.
   // 이때 openZeta 로 대화창을 여는 건 부적절 (컷신 끝난 뒤 자동으로 열림).
   // 대화창을 바로 열지 않고 리턴.
-  if (state.cutscenePending || (state.simulation && state.simulation.active)) {
+  //
+  // [피드백 #6] endingPreviewPending 도 체크.
+  //   야미 approach → ending effect → showEndingPreviewModal 팝업 떠있는 동안은
+  //   sim.active 가 아직 false (팝업 확인 눌러야 startEndingSimulation 실행).
+  //   이 틈에 selectNpc 가 openZeta 를 호출하면 팝업 뒤에 대화창이 깔림.
+  if (state.cutscenePending || state.endingPreviewPending
+      || (state.simulation && state.simulation.active)) {
     return;
   }
 
