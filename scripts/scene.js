@@ -127,11 +127,84 @@ LOCATIONS.slice(1, 5).forEach((loc, i) => {
     }
     group.add(knob);
   }
-  // 간판 이모지 대신 색칠된 깃발
-  const flagGeo = new THREE.BoxGeometry(0.1, 1.5, 0.1);
-  const flag = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
-  flag.position.set(1.2, 2.5, 1.2);
-  group.add(flag);
+  // [Tier 3 #5] 3D 간판 — 지붕 아래 정면 외벽에 나무판 + 한글 텍스트.
+  //   loc.signText 가 있을 때만 생성. 문이 있는 방향과 같은 쪽 벽에 붙여 유저가
+  //   걸어와서 보이도록 배치. 텍스트는 CanvasTexture 로 동적 생성 (한글 폰트 호환).
+  //   나무판 위에 텍스트 plane 을 살짝 띄워 약한 양각 느낌.
+  if (loc.signText) {
+    const signGroup = new THREE.Group();
+
+    // 1) 나무판 배경 — 가로형 직사각형
+    const plankGeo = new THREE.BoxGeometry(1.8, 0.55, 0.08);
+    const plankMat = new THREE.MeshStandardMaterial({
+      color: 0x8b5a2b,    // 갈색 나무
+      roughness: 0.85,
+    });
+    const plank = new THREE.Mesh(plankGeo, plankMat);
+    plank.castShadow = true;
+    plank.receiveShadow = true;
+    signGroup.add(plank);
+
+    // 2) 텍스트 plane — CanvasTexture 로 한글 그리기
+    const canvas = document.createElement('canvas');
+    canvas.width = 360;
+    canvas.height = 110;
+    const ctx = canvas.getContext('2d');
+    // 배경은 투명. 텍스트만 그림.
+    ctx.fillStyle = '#fdf4e3';               // 크림색 (나무판에 대비)
+    ctx.font = 'bold 64px "Noto Sans KR", "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // 약한 그림자로 글자 부각
+    ctx.shadowColor = 'rgba(40, 20, 10, 0.5)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 2;
+    ctx.fillText(loc.signText, canvas.width / 2, canvas.height / 2);
+
+    const textTexture = new THREE.CanvasTexture(canvas);
+    textTexture.minFilter = THREE.LinearFilter;
+    textTexture.magFilter = THREE.LinearFilter;
+    textTexture.needsUpdate = true;
+
+    const textGeo = new THREE.PlaneGeometry(1.7, 0.5);
+    const textMat = new THREE.MeshBasicMaterial({
+      map: textTexture,
+      transparent: true,
+      depthWrite: false,
+    });
+    const textMesh = new THREE.Mesh(textGeo, textMat);
+    // 나무판 정면에서 살짝 띄움 (z-fighting 방지)
+    textMesh.position.z = 0.05;
+    signGroup.add(textMesh);
+
+    // 뒷면용 텍스트 (같은 내용, 반대 방향) — 양면 모두 보이게
+    const textMeshBack = new THREE.Mesh(textGeo, textMat.clone());
+    textMeshBack.position.z = -0.05;
+    textMeshBack.rotation.y = Math.PI;
+    signGroup.add(textMeshBack);
+
+    // 3) 문 방향에 맞춰 간판 배치
+    //   문이 남/북쪽(Z 방향) 이면 간판도 같은 외벽에. 문이 동/서쪽(X 방향) 이면 회전.
+    //   간판은 지붕 아래, 외벽 위쪽 (y=2.0) 에 떠 있음.
+    if (loc.door) {
+      const doorDx = loc.door.x - loc.x;
+      const doorDz = loc.door.z - loc.z;
+      if (Math.abs(doorDz) > Math.abs(doorDx)) {
+        // 문이 Z 방향 (남/북) — 간판도 Z 방향 외벽. 회전 없음.
+        signGroup.position.set(0, 2.0, doorDz > 0 ? 1.55 : -1.55);
+        if (doorDz < 0) signGroup.rotation.y = Math.PI;
+      } else {
+        // 문이 X 방향 (동/서) — 간판 회전.
+        signGroup.position.set(doorDx > 0 ? 1.55 : -1.55, 2.0, 0);
+        signGroup.rotation.y = doorDx > 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+    } else {
+      // 문 없으면 디폴트 (남쪽)
+      signGroup.position.set(0, 2.0, 1.55);
+    }
+
+    group.add(signGroup);
+  }
   
   group.position.set(loc.x, 0, loc.z);
   group.userData = { type: 'building', name: loc.name, windowMat, loc };
@@ -924,8 +997,12 @@ function updateUser(dt) {
   // 이동
   const dirX = dx / distance;
   const dirZ = dz / distance;
-  const newX = u.mesh.position.x + dirX * u.speed * dt;
-  const newZ = u.mesh.position.z + dirZ * u.speed * dt;
+  // [Tier 1 #1] 시뮬 중 (특히 엔딩 시뮬 C) 에 유저도 2배속으로 걷도록.
+  const simMul = (state.simulation && state.simulation.active && state.simulation.speed)
+    ? state.simulation.speed : 1;
+  const moveSpeed = u.speed * simMul;
+  const newX = u.mesh.position.x + dirX * moveSpeed * dt;
+  const newZ = u.mesh.position.z + dirZ * moveSpeed * dt;
   
   if (state.viewMode === 'interior') {
     // 인테리어 안: 벽 안쪽 clamp + 가구 AABB 충돌
@@ -2002,6 +2079,12 @@ function updateNpcs(dt) {
     }
     
     // [Wave 3 이슈 α] 채팅 메시지 타이머 — chatBubbleEl (이름표와 분리된 말풍선) 에 적용.
+    // [Tier 1 #1 재검토] 시뮬 2배속이어도 말풍선 지속 시간은 실제 초 기준으로 유지.
+    //   이유: 2배속 적용은 "연출 루즈함 해소" 목적이고, 말풍선 읽기 시간은 유저 경험과 직결.
+    //         말풍선 duration 4~5초는 읽기 위해 설계된 값이므로 이걸 절반으로 줄이면 읽지 못함.
+    //         스크립트의 at 간격과 duration 관계를 검토해본 결과, 2배속에서도 같은 NPC 연속
+    //         발화가 겹치지 않음 (시뮬 A: 3초 듀/3.33초 간격, 시뮬 B: 5초 듀/다음 이벤트는 말풍선
+    //         아닌 evidence). 따라서 말풍선은 실제 초 타이머 유지.
     if (n.chatTimer > 0) {
       n.chatTimer -= dt;
       if (n.chatTimer <= 0 && n.chatMessage) {
@@ -2012,6 +2095,57 @@ function updateNpcs(dt) {
         }
         // 이름표의 chatting 스타일도 제거 (혹시 과거에 설정됐다면)
         n.speechBubbleEl.classList.remove('chatting');
+      }
+    }
+
+    // [Tier 2 #12] 상시 도움 말풍선 — NPC 데이터의 showHelpBubble 플래그가 true 면
+    //   chatBubbleEl 에 "나 좀 도와줘" 상시 노출. chatTimer 기반 대화 말풍선과 충돌하지
+    //   않도록 "현재 대화 말풍선이 없을 때만" 표시. chatTimer > 0 이면 덮어쓰지 않고
+    //   대화 말풍선 우선. chatTimer 끝난 직후 이 로직이 도움 말풍선으로 복귀.
+    //
+    //   플래그 세팅:
+    //     scenarioEngine 의 setFlag effect 가 state.flags 에 'yami_needs_help' 추가
+    //     → 아래에서 상응하는 npc 에 showHelpBubble=true 마킹 (렌더 루프 안에서 동기화).
+    //
+    //   해제:
+    //     퀘스트 resolved 또는 stage 가 resolved 로 전환되면 flag 제거.
+    //     setFlag/clearFlag 로직은 엔진에 이미 있음.
+    // [Tier 2 #12] 상시 도움 말풍선 — NPC 데이터의 showHelpBubble 플래그가 true 면
+    //   chatBubbleEl 에 "나 좀 도와줘" 상시 노출. chatTimer 기반 대화 말풍선과 충돌하지
+    //   않도록 "현재 대화 말풍선이 없을 때만" 표시. chatTimer > 0 이면 덮어쓰지 않고
+    //   대화 말풍선 우선. chatTimer 끝난 직후 이 로직이 도움 말풍선으로 복귀.
+    //
+    //   플래그 세팅:
+    //     scenarioEngine 의 setFlag effect 가 state.flags 에 'yami_needs_help' 추가
+    //     → 아래에서 상응하는 npc 에 showHelpBubble=true 마킹 (렌더 루프 안에서 동기화).
+    //
+    //   해제:
+    //     퀘스트 resolved 또는 stage 가 resolved 로 전환되면 flag 제거.
+    //     setFlag/clearFlag 로직은 엔진에 이미 있음.
+    //
+    //   주의: 바깥 스코프에 이미 const npc 가 있음 (2054행) — 재사용.
+    if (npc && npc.id === 'yami' && state.simulation && !state.simulation.active) {
+      // flag 동기화 — 엔진의 engineState.flags 에 'yami_needs_help' 있는지 보고 npc 에 마킹.
+      // 주의: engineState.flags 는 object ({ key: true }), Set 아님. key in obj 체크.
+      const engineFlags = (window.scenarioEngine && window.scenarioEngine.state && window.scenarioEngine.state.flags) || {};
+      const needsHelp = !!engineFlags['yami_needs_help'];
+      npc.showHelpBubble = needsHelp;
+
+      if (npc.showHelpBubble && n.chatTimer <= 0 && n.chatBubbleEl) {
+        // chat 말풍선이 비어있으면 도움 말풍선으로 채움.
+        if (!n.chatBubbleEl.dataset.isHelpBubble) {
+          n.chatBubbleEl.textContent = '💬 나 좀 도와줘';
+          n.chatBubbleEl.classList.remove('hide');
+          n.chatBubbleEl.dataset.isHelpBubble = '1';
+        }
+      } else if (n.chatBubbleEl && n.chatBubbleEl.dataset.isHelpBubble && !npc.showHelpBubble) {
+        // 플래그 꺼지면 도움 말풍선 제거.
+        n.chatBubbleEl.textContent = '';
+        n.chatBubbleEl.classList.add('hide');
+        delete n.chatBubbleEl.dataset.isHelpBubble;
+      } else if (n.chatTimer > 0 && n.chatBubbleEl && n.chatBubbleEl.dataset.isHelpBubble) {
+        // 대화 말풍선이 방금 떴으면 도움 말풍선 마커 제거 (덮어써도 문제 없음).
+        delete n.chatBubbleEl.dataset.isHelpBubble;
       }
     }
     
@@ -2039,7 +2173,13 @@ function updateNpcs(dt) {
         n.idleTimer = 1.5 + Math.random() * 3;
       } else {
         dir.normalize();
-        const speed = n.currentScene === 'interior' ? 1.3 : 2.0;
+        const baseSpeed = n.currentScene === 'interior' ? 1.3 : 2.0;
+        // [Tier 1 #1] 시뮬 중엔 sim.speed 만큼 빠르게 이동.
+        //   스크립트 at 간격이 2배속으로 좁아지면 NPC 도착 전 다음 장면 이벤트가 발동해서
+        //   "이동 중인데 문 두드리는 나레이션" 같은 어긋남 발생 → 이동 속도도 같이 배속.
+        const simMul = (state.simulation && state.simulation.active && state.simulation.speed)
+          ? state.simulation.speed : 1;
+        const speed = baseSpeed * simMul;
         const newX = n.mesh.position.x + dir.x * speed * dt;
         const newZ = n.mesh.position.z + dir.z * speed * dt;
         // 충돌 해소는 외부에서만 (인테리어는 좁아서 오브젝트 충돌은 생략, 단순 clamp)
@@ -2154,7 +2294,21 @@ function updateTimeOfDay(dt) {
 
 // 조명/창문/상단 바 업데이트 — state.timeOfDay 값에 따라
 function updateSimulationLighting() {
-  const t = state.timeOfDay;
+  let t = state.timeOfDay;
+
+  // [Tier 1 #2] 시뮬 중엔 조명 고정.
+  //   - night 모드 (밤 시뮬 B): 항상 한밤 조명 (t=0.05)
+  //   - ending/cutscene 모드 (시뮬 A/C): 항상 정오 조명 (t=0.5)
+  //   이유: timeOfDay 가 시뮬 중 누적 증가하면 조명이 서서히 바뀌어 연출 분위기가 흔들림.
+  //         한 씬 내내 일관된 분위기를 유지하기 위해 t 값 자체를 고정해서 조명 계산.
+  if (state.simulation && state.simulation.active) {
+    if (state.simulation.mode === 'night') {
+      t = 0.05;  // 한밤 범위 (<0.15)
+    } else {
+      t = 0.5;   // 정오 범위 (0.4~0.6)
+    }
+  }
+
   let skyColor, lightColor, lightIntensity, ambient;
   
   if (t < 0.15) {
