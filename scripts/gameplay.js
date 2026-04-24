@@ -14,6 +14,14 @@ function selectNpc(npcId) {
     console.error('[gameplay] scenarioEngine.handleNpcApproach 호출 중 에러 (무시하고 진행):', err);
   }
 
+  // [시뮬 A 신규] handleNpcApproach 가 playCutscene 을 발동시켰다면
+  // state.cutscenePending=true 또는 state.simulation.active=true 상태.
+  // 이때 openZeta 로 대화창을 여는 건 부적절 (컷신 끝난 뒤 자동으로 열림).
+  // 대화창을 바로 열지 않고 리턴.
+  if (state.cutscenePending || (state.simulation && state.simulation.active)) {
+    return;
+  }
+
   // 시나리오 NPC는 제타 스타일 팝업 채팅
   if (npc.isStory && ['chaka', 'yami', 'bamtol'].includes(npc.id)) {
     openZeta(npc.id);
