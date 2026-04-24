@@ -119,40 +119,62 @@ function resolveCollisions(pos, self) {
 // 타입: 'move' (npc가 좌표로 이동), 'dialog' (말풍선), 'camera' (카메라 포커스)
 const NIGHT_SCRIPTS = {
   1: [ // Day 1 밤 — 야미 책 픽업 + 차카 서점 근처 야경 촬영
-    // [카테고리 1 수정] 5개 덩어리 × 4초 = 총 20초. sim.speed=1 전제.
-    // narration 은 move/camera 와 같은 at 에 배치해 동시 재생.
+    // [Wave 2 / 이슈 C 수정] 속도·위치·혼잣말 개선.
+    //
+    // 이전: 5장면 × 4초 = 20초, 간격 0.06 (sim.speed=1 전제)
+    // 변경: 6장면 × 8초 = 48초, 간격 0.12
+    //        → 시각적 액션이 차분해져서 유저가 읽고 반응할 시간 확보
+    //
+    // 위치 조정:
+    //   - 야미: 서점 문 앞(8, 3.5) 까지 가고, 이후 서점 위치(8, 6) 로 더 들어감 ≈ "안에 들어가는" 인상
+    //     (실제로 interior 전환은 안 함 — 위치만 서점 쪽으로 깊이 이동)
+    //   - 차카: 서점에서 "조금 떨어진" 광장 근처(3, 2) 로 → 사진 구도용 거리감
+    //
+    // 혼잣말 (bubble):
+    //   - 차카: "오늘 밤 풍경이 참 이쁘구만." — 서점 근처 서서 셔터 누르는 타이밍에
+    //   - 야미: 약간의 혼잣말도 하나 추가 ("이 책, 드디어 내 손에…") — 서점 도착 시
+    //
+    // [인계용 설계 노트]
+    //   - bubble 이벤트는 narration (하단 자막) 과 별개. 둘 다 동시 사용 가능.
+    //   - 말풍선 duration 기본 5초, 장면 전환과 맞추려면 간격(8초) 이내로.
 
-    // 장면 1 (0.76 ~ 0.82): 분위기 설정
+    // 장면 1 (0.76 ~ 0.88): 분위기 설정 + 야미 등장
     { id: 'd1_s1_intro', at: 0.76, type: 'narration',
       text: '밤이 깊어가는 동네...' },
 
-    // 장면 2 (0.82 ~ 0.88): 야미가 서점으로 이동 + 카메라 야미
-    { id: 'd1_s2_yami_move', at: 0.82, type: 'move', npc: '야미',
-      to: { x: 7.5, z: 3.5 },
+    // 장면 2 (0.88 ~ 1.00): 야미가 서점 문 앞까지 이동 + 카메라 야미
+    { id: 'd1_s2_yami_move', at: 0.88, type: 'move', npc: '야미',
+      to: { x: 8, z: 4 }, // 서점 문(8, 3.5) 근처
       narration: '야미가 예약해 둔 책을 픽업하러 서점에 가고 있네요.' },
-    { id: 'd1_s2_yami_cam',  at: 0.82, type: 'camera', npc: '야미' },
+    { id: 'd1_s2_yami_cam',  at: 0.88, type: 'camera', npc: '야미' },
 
-    // 장면 3 (0.88 ~ 0.94): 차카가 서점 근처에서 서성임 + 카메라 차카
-    // (이 시점에 카메라가 차카로 전환되므로 야미의 서점 도착 모습은 화면 밖)
-    { id: 'd1_s3_chaka_move', at: 0.88, type: 'move', npc: '차카',
-      to: { x: 5, z: 4 },
-      narration: '차카는 동네의 야경을 카메라로 담고 있어요.' },
-    { id: 'd1_s3_chaka_cam',  at: 0.88, type: 'camera', npc: '차카' },
+    // 장면 3 (1.00 ~ 1.12): 야미 서점 안으로 깊이 이동 + 혼잣말 (책 집어듦)
+    { id: 'd1_s3_yami_enter', at: 1.00, type: 'move', npc: '야미',
+      to: { x: 8, z: 6.5 }, // 서점 중심(8,6) 안쪽 ≈ "들어간" 느낌
+      narration: '야미가 서점 안쪽에서 예약 책을 찾기 시작해요.' },
+    { id: 'd1_s3_yami_bubble', at: 1.02, type: 'bubble', npc: '야미',
+      text: '이 책, 드디어 내 손에…', duration: 4 },
 
-    // 장면 4 (0.94 ~ 1.00): 차카가 서점 앞으로 이동해서 멈춤 + 카메라 유지
-    { id: 'd1_s4_chaka_stop', at: 0.94, type: 'move', npc: '차카',
-      to: { x: 6, z: 3.2 },
-      narration: '서점과 동네의 풍경을 담았어요.' },
-    { id: 'd1_s4_chaka_cam',  at: 0.94, type: 'camera', npc: '차카' },
+    // 장면 4 (1.12 ~ 1.24): 카메라 전환 — 차카가 서점 조금 떨어진 곳에서 야경 촬영
+    { id: 'd1_s4_chaka_move', at: 1.12, type: 'move', npc: '차카',
+      to: { x: 3, z: 2 }, // 광장 북쪽, 서점에서 거리감 있는 위치
+      narration: '차카는 서점에서 조금 떨어진 곳에서 동네 야경을 카메라에 담고 있어요.' },
+    { id: 'd1_s4_chaka_cam',  at: 1.12, type: 'camera', npc: '차카' },
+    { id: 'd1_s4_chaka_bubble', at: 1.14, type: 'bubble', npc: '차카',
+      text: '오늘 밤 풍경이 참 이쁘구만.', duration: 4 },
 
-    // 장면 5 (1.00 ~ 1.06): 야미가 서점에서 나와 광장으로 이동 + 카메라 야미
-    { id: 'd1_s5_yami_home',  at: 1.00, type: 'move', npc: '야미',
+    // 장면 5 (1.24 ~ 1.36): 차카가 셔터를 누르는 순간 — 우연히 서점 쪽 앵글에 야미 담김
+    { id: 'd1_s5_chaka_shutter', at: 1.24, type: 'narration',
+      text: '차카가 셔터를 눌러요. 서점 유리창 너머 실루엣 하나가 함께 담겼어요.' },
+
+    // 장면 6 (1.36 ~ 1.48): 야미가 서점에서 나와 집으로 + 카메라 야미
+    { id: 'd1_s6_yami_home',  at: 1.36, type: 'move', npc: '야미',
       to: { x: 0, z: 0 },
       narration: '야미가 예약한 책을 픽업해서 집으로 돌아가요.' },
-    { id: 'd1_s5_yami_cam',   at: 1.00, type: 'camera', npc: '야미' },
+    { id: 'd1_s6_yami_cam',   at: 1.36, type: 'camera', npc: '야미' },
 
     // 장면 종료
-    { id: 'd1_end', at: 1.06, type: 'end' },
+    { id: 'd1_end', at: 1.48, type: 'end' },
   ],
   // Day 2, 3 밤은 별도 카테고리에서 다룸
 };
@@ -359,6 +381,22 @@ function fireScriptEvent(ev) {
     if (ev.label) {
       // 상단 라벨은 이벤트 라벨로 덮어씌우되 앞에 ★ 표시
       setSimulationEventLabel('★ ' + ev.label);
+    }
+  }
+
+  // [Wave 2 / 이슈 C] 시뮬레이션 중 NPC 머리 위 말풍선 표시.
+  // gameplay.js 의 sendChatMessage 가 쓰는 것과 동일한 메커니즘:
+  //   - speechBubbleEl.textContent 로 메시지 설정
+  //   - .classList.add('chatting') 로 시각적 강조
+  //   - chatMessage + chatTimer 를 세팅해 지속 시간 후 자동 해제 (scene.js 가 처리)
+  if (ev.type === 'bubble' && ev.npc && ev.text) {
+    const target = state.npcs.find(n => n.name === ev.npc);
+    if (target && npcMeshes[target.id]) {
+      const mesh = npcMeshes[target.id];
+      mesh.speechBubbleEl.textContent = `${target.emoji} ${ev.text}`;
+      mesh.speechBubbleEl.classList.add('chatting');
+      mesh.chatMessage = ev.text;
+      mesh.chatTimer = ev.duration || 5; // 기본 5초 지속
     }
   }
   
@@ -740,9 +778,19 @@ function openZeta(npcId) {
   const messagesEl = document.getElementById('zeta-messages');
   messagesEl.innerHTML = '';
   let history = state.chatHistory[npcId] || [];
-  
-  // 첫 만남이면 NPC가 먼저 인사 (natural 감정)
+
+  // [Wave 1] scripted 메시지(npcSpeaksFirst effect 로 삽입된 것) 감지.
+  // source === 'scripted' 이고 유저가 아직 UI 에서 보지 못한 것들만 골라서 표시.
+  // 한 번 UI 에 노출되면 shown 플래그 세팅 → 다음 openZeta 에선 "이전 대화 N건" 에 포함.
+  const unseenScripted = history.filter(m => m.role === 'npc' && m.source === 'scripted' && !m.shown);
+
+  // 분기 조건:
+  //   (a) history 비어있음                    → 첫 만남 인사말
+  //   (b) unseenScripted 존재                 → "상황이 달라졌다" 인디케이터 + 해당 메시지들만 UI 렌더
+  //   (c) 그 외                              → "이전 대화 N건" 시스템 메시지 (이전 UI 재현 없음)
+
   if (history.length === 0) {
+    // (a) 첫 만남
     const sys = document.createElement('div');
     sys.className = 'zeta-msg system';
     sys.textContent = `${npc.name}와의 첫 만남`;
@@ -759,27 +807,54 @@ function openZeta(npcId) {
     const greeting = greetings[npcId] || `안녕! 반가워${npc.speechHabit || ''}`;
     
     // 인사말을 히스토리에 추가 (서버에 저장, 이후 대화 맥락으로 쓰임)
-    history = [{ role: 'npc', text: greeting, emotion: 'natural' }];
+    history = [{ role: 'npc', text: greeting, emotion: 'natural', shown: true }];
     state.chatHistory[npcId] = history;
-  }
-  
-  // 히스토리 렌더링 — NPC 감정이 바뀌는 지점에 이미지 카드 삽입
-  let prevEmotion = null;
-  history.forEach(m => {
-    if (m.role === 'npc') {
-      const emotion = m.emotion || detectEmotion(m.text, npcId);
-      if (emotion !== prevEmotion) {
-        appendInlineEmotionCard(npcId, emotion, messagesEl);
-        prevEmotion = emotion;
-      }
+
+    // UI 렌더
+    const emotion = 'natural';
+    appendInlineEmotionCard(npcId, emotion, messagesEl);
+    const greetMsg = document.createElement('div');
+    greetMsg.className = 'zeta-msg npc';
+    greetMsg.textContent = greeting;
+    messagesEl.appendChild(greetMsg);
+    state.chatHistory[`_emotion_${npcId}`] = emotion;
+  } else if (unseenScripted.length > 0) {
+    // (b) scripted 메시지가 새로 삽입됨 — 상황 변화 있음.
+    // 이전 대화 건수 안내 (scripted 이전까지의 대화 카운트) + scripted 메시지 UI 렌더.
+    const priorCount = history
+      .filter(m => (m.role === 'user' || m.role === 'npc') && m.source !== 'scripted')
+      .length;
+    if (priorCount > 0) {
+      const sys = document.createElement('div');
+      sys.className = 'zeta-msg system';
+      sys.textContent = `(이전 대화 ${priorCount}건 — ${npc.name}는 이전 이야기를 기억하고 있어요)`;
+      messagesEl.appendChild(sys);
     }
-    const msg = document.createElement('div');
-    msg.className = `zeta-msg ${m.role}`;
-    msg.textContent = m.role === 'user' ? m.text : `${m.text}`;
-    messagesEl.appendChild(msg);
-  });
-  // 마지막 감정 상태 저장 (새 대화에서 비교용)
-  if (prevEmotion) state.chatHistory[`_emotion_${npcId}`] = prevEmotion;
+    // scripted 메시지들을 시간 순서대로 (history 내 등장 순서) UI 에 렌더 + shown 마킹
+    let prevEmotion = state.chatHistory[`_emotion_${npcId}`] || null;
+    history.forEach(m => {
+      if (m.role === 'npc' && m.source === 'scripted' && !m.shown) {
+        const emotion = m.emotion || 'natural';
+        if (emotion !== prevEmotion) {
+          appendInlineEmotionCard(npcId, emotion, messagesEl);
+          prevEmotion = emotion;
+        }
+        const msg = document.createElement('div');
+        msg.className = 'zeta-msg npc';
+        msg.textContent = m.text;
+        messagesEl.appendChild(msg);
+        m.shown = true; // 이후 openZeta 에선 "이전 대화 N건" 에 포함
+      }
+    });
+    if (prevEmotion) state.chatHistory[`_emotion_${npcId}`] = prevEmotion;
+  } else {
+    // (c) 단순 재방문. 이전 UI 재현 없이 카운트만.
+    const msgCount = history.filter(m => m.role === 'user' || m.role === 'npc').length;
+    const sys = document.createElement('div');
+    sys.className = 'zeta-msg system';
+    sys.textContent = `(이전 대화 ${msgCount}건 — ${npc.name}는 이전 이야기를 기억하고 있어요)`;
+    messagesEl.appendChild(sys);
+  }
   
   document.getElementById('zeta-chat').classList.add('show');
   setTimeout(() => {
