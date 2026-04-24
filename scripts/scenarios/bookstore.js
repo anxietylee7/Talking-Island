@@ -462,14 +462,19 @@ window.BOOKSTORE_SCENARIO = {
       //         이로써 유저는 퀘스트 진행도 2/2 확인 → 야미에게 기쁜 소식 전하러 가는
       //         감정적 여유 확보. 또 야미는 "나 좀 도와줘" 말풍선 덕에 찾기 쉬움.
 
-      // 1) 단계 진입 즉시: 알림 띄움 + 야미 말풍선은 유지 (엔딩 시뮬까지).
-      //    clearFlag 는 엔딩 진입 시점에 실행되므로 여기서 하지 않음.
+      // 1) 단계 진입 즉시: 알림 + clearFlag 로 야미 말풍선 해제 + 배너 갱신.
+      //    [피드백 #5] 이전엔 clearFlag 를 ending_scene(approach 트리거) 에만 뒀는데,
+      //    유저가 야미 approach 하기 전까지 말풍선이 계속 떠있어 혼란.
+      //    → resolved 진입 (2/2 달성) 순간 말풍선 해제로 이동.
+      //    대신 배너 "✨ 야미에게 가서 소식을 전해주세요" + showNotification 이
+      //    유저 유도 역할을 계속 담당.
       {
         id: 'resolved_notify',
         trigger: { type: 'autoOnStageEnter' },
         required: false,
         preconditions: [],
         effects: [
+          { type: 'clearFlag', key: 'yami_needs_help' },
           { type: 'showNotification',
             text: '✨ 오해가 풀리기 시작했어요. 야미에게 소식을 전해주세요.' },
         ],
@@ -482,8 +487,6 @@ window.BOOKSTORE_SCENARIO = {
         required: false,
         preconditions: [],
         effects: [
-          // 야미 "나 좀 도와줘" 말풍선 해제 (이제 소식 전해주러 왔으니)
-          { type: 'clearFlag', key: 'yami_needs_help' },
           // 엔딩 분기는 엔진이 `ending` 효과를 받으면 퀘스트 해결 시 저장된 플래그로 분기 처리
           { type: 'ending', branchKey: 'bookstore_ending' },
         ],
