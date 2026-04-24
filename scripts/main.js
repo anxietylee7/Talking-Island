@@ -298,9 +298,16 @@ function animate() {
     if (state.user.bubbleEl) state.user.bubbleEl.classList.add('hide');
     renderer.render(interiorScene, camera);
   } else {
-    // 시뮬레이션 중에는 유저 아바타 숨김 + 시간은 runSimulationTick이 관리
+    // 시뮬레이션 중 유저 아바타 처리:
+    //   - mode 'night'    : 유저는 집에서 자고 있음 → hide (기존 동작)
+    //   - mode 'cutscene' : 유저 등장 없는 컷신 (시뮬 A) → hide (기존 동작)
+    //   - mode 'ending'   : 유저가 야미와 함께 서점으로 감 → [피드백 #7] visible
+    //     스크립트에 moveUser 이벤트가 있으므로 visible 상태여야 함.
     if (state.simulation.active) {
-      if (state.user.mesh) state.user.mesh.visible = false;
+      const simMode = state.simulation.mode;
+      const shouldShowUser = (simMode === 'ending');
+      if (state.user.mesh) state.user.mesh.visible = shouldShowUser;
+      // 이름 말풍선은 엔딩 중에도 숨김 (연출 집중).
       if (state.user.bubbleEl) state.user.bubbleEl.classList.add('hide');
       runSimulationTick(dt);
       // 조명만 갱신 (시간 흐름에 따른 하늘/조명)
