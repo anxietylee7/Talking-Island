@@ -1258,56 +1258,89 @@
   //
   // 실패 시: console.warn 후 빈 결과 반환 (게임 진행엔 영향 없음).
   async function evaluateQuestMilestones(npcId, dialogueLog) {
+    // ==============================
+    // [Tier 진단 #16] 상세 로깅 버전
+    // ==============================
+    // 재현 후 아래 [Q#XX] 라벨 로그들을 복사해서 주세요.
+    // 각 단계별로 어디서 끊기는지 추적 가능합니다.
+    console.log('[Q#01] evaluateQuestMilestones 진입. npcId=' + npcId +
+                ', dialogueLog.length=' + (dialogueLog ? dialogueLog.length : 'null'));
+
     const scenario = engineState.scenario;
-    if (!scenario || !scenario.quests) return { questId: null, newlyAchieved: [] };
-    if (typeof state === 'undefined' || !state || !Array.isArray(state.quests)) {
+    if (!scenario || !scenario.quests) {
+      console.log('[Q#02] 시나리오/quests 정의 없음 → 종료');
       return { questId: null, newlyAchieved: [] };
     }
+    if (typeof state === 'undefined' || !state || !Array.isArray(state.quests)) {
+      console.log('[Q#03] state.quests 없음 → 종료');
+      return { questId: null, newlyAchieved: [] };
+    }
+    console.log('[Q#04] state.quests 개수=' + state.quests.length +
+                ', 내용:', state.quests.map(function(q){
+                  return { id: q && q.id, isStory: q && q.isStory, resolved: q && q.resolved };
+                }));
 
     // 1. 활성 스토리 퀘스트 찾기 (현재는 하나만 동시에 활성이라고 가정)
     const activeQuest = state.quests.find(function (q) {
       return q && q.isStory && !q.resolved;
     });
     if (!activeQuest) {
-      console.log('[engine] evaluateQuestMilestones: 활성 스토리 퀘스트 없음');
+      console.log('[Q#05] 활성 스토리 퀘스트 없음 → 종료');
       return { questId: null, newlyAchieved: [] };
     }
+    console.log('[Q#06] 활성 퀘스트 찾음: ' + activeQuest.id);
 
     const questDef = scenario.quests[activeQuest.id];
     if (!questDef || !Array.isArray(questDef.milestones) || questDef.milestones.length === 0) {
-      console.log('[engine] evaluateQuestMilestones: 퀘스트 정의에 milestones 없음');
+      console.log('[Q#07] 퀘스트 정의에 milestones 없음 → 종료');
       return { questId: activeQuest.id, newlyAchieved: [] };
     }
+    console.log('[Q#08] questDef.milestones 개수=' + questDef.milestones.length +
+                ', ids=' + questDef.milestones.map(function(m){return m.id;}).join(','));
 
     // 2. 이 NPC 와의 대화에서 달성 가능한 마일스톤만 필터
     const alreadyAchieved = engineState.questMilestones[activeQuest.id] || new Set();
+    console.log('[Q#09] 이미 달성된 마일스톤=' + Array.from(alreadyAchieved).join(',') +
+                ' (size=' + alreadyAchieved.size + ')');
+
     const candidates = questDef.milestones.filter(function (m) {
       if (alreadyAchieved.has(m.id)) return false;
       if (!Array.isArray(m.applicableNpcs) || m.applicableNpcs.indexOf(npcId) === -1) return false;
       return true;
     });
+    console.log('[Q#10] 이 NPC(' + npcId + ') 필터 후 candidates=' +
+                candidates.map(function(m){return m.id;}).join(',') +
+                ' (개수=' + candidates.length + ')');
+    // 각 milestone 의 applicableNpcs 도 같이 찍어서 필터 오류 파악 쉽게.
+    console.log('[Q#10b] milestone applicableNpcs 매핑:',
+                questDef.milestones.map(function(m){
+                  return { id: m.id, applicableNpcs: m.applicableNpcs };
+                }));
 
     if (candidates.length === 0) {
-      console.log('[engine] evaluateQuestMilestones: 이 NPC(' + npcId + ')로 달성 가능한 남은 마일스톤 없음');
+      console.log('[Q#11] candidates 없음 → 종료 (이미 다 달성됐거나 NPC 매칭 안 됨)');
       return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
                threshold: questDef.resolveThreshold || 0, resolved: false };
     }
 
     // 3. 대화 로그가 너무 빈약하면 판정 스킵 (AI 낭비 방지)
     if (!Array.isArray(dialogueLog) || dialogueLog.length === 0) {
+      console.log('[Q#12] dialogueLog 비어있음 → 종료');
       return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
                threshold: questDef.resolveThreshold || 0, resolved: false };
     }
     const userTurnCount = dialogueLog.filter(function (m) { return m.role === 'user'; }).length;
+    console.log('[Q#13] 유저 발화 수=' + userTurnCount +
+                ', 전체 메시지 수=' + dialogueLog.length);
     if (userTurnCount === 0) {
-      console.log('[engine] evaluateQuestMilestones: 유저 발화 없음 → 판정 스킵');
+      console.log('[Q#14] 유저 발화 0 → 판정 스킵');
       return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
                threshold: questDef.resolveThreshold || 0, resolved: false };
     }
 
     // 4. AI 호출
     if (typeof callClaude !== 'function') {
-      console.warn('[engine] evaluateQuestMilestones: callClaude 미정의');
+      console.warn('[Q#15] callClaude 미정의 → 종료');
       return { questId: activeQuest.id, newlyAchieved: [] };
     }
 
@@ -1317,6 +1350,7 @@
       const who = m.role === 'user' ? '유저' : npcName;
       return who + ': ' + m.text;
     }).join('\n');
+    console.log('[Q#16] convoStr (AI 로 보낼 대화 로그, 마지막 10턴):\n' + convoStr);
 
     const candidatesStr = candidates.map(function (m, i) {
       return (i + 1) + '. id="' + m.id + '": ' + m.triggerCondition;
@@ -1346,17 +1380,23 @@
 
     let aiResult = null;
     try {
+      console.log('[Q#17] AI 호출 시작...');
       // [9단계 수정] temperature 0.2 로 낮춰 판정 일관성 확보.
       // (NPC 답변 생성은 여전히 0.85 유지 — 창의성 필요)
       aiResult = await callClaude(systemPrompt, userPrompt, true, { temperature: 0.2 });
+      console.log('[Q#18] AI 응답 원본:', aiResult);
     } catch (err) {
-      console.warn('[engine] evaluateQuestMilestones: AI 호출 실패 (무시)', err);
+      console.warn('[Q#19] AI 호출 실패 → 종료', err);
       return { questId: activeQuest.id, newlyAchieved: [], totalAchieved: alreadyAchieved.size,
                threshold: questDef.resolveThreshold || 0, resolved: false };
     }
 
     const achieved = (aiResult && Array.isArray(aiResult.achieved)) ? aiResult.achieved : [];
-    console.log('[engine] evaluateQuestMilestones 결과:', achieved, '사유:', aiResult && aiResult.reason);
+    console.log('[Q#20] achieved 배열 (AI가 달성했다고 판정한 id):', achieved,
+                ' / reason: ' + (aiResult && aiResult.reason));
+    if (!Array.isArray(aiResult && aiResult.achieved)) {
+      console.warn('[Q#20b] ⚠️ AI 응답에 achieved 필드가 배열이 아님! aiResult=', aiResult);
+    }
 
     // 5. 달성된 것 questMilestones 에 추가 (candidates 에 있던 것만 받아들임 — AI 가 이상한 id 만들어낼 수도 있어서)
     const validIds = {};
@@ -1369,7 +1409,14 @@
     }
     const targetSet = engineState.questMilestones[activeQuest.id];
     for (const mid of achieved) {
-      if (validIds[mid] && !targetSet.has(mid)) {
+      const isValid = !!validIds[mid];
+      const alreadyIn = targetSet.has(mid);
+      console.log('[Q#21] AI 가 보낸 id="' + mid + '": validIds=' + isValid +
+                  ', alreadyIn=' + alreadyIn +
+                  (isValid && !alreadyIn ? ' → ✅ 추가' :
+                   !isValid ? ' → ❌ 엔진이 거부 (id 오타 의심)' :
+                   ' → ⏩ 이미 달성돼 있음'));
+      if (isValid && !alreadyIn) {
         targetSet.add(mid);
         newlyAchieved.push(mid);
         newlyAchievedDetails.push({
@@ -1378,10 +1425,14 @@
         });
       }
     }
+    console.log('[Q#22] 최종 questMilestones[' + activeQuest.id + '] =',
+                Array.from(targetSet), ' (size=' + targetSet.size + ')');
 
     // 6. threshold 검사
     const threshold = questDef.resolveThreshold || questDef.milestones.length;
     const totalAchieved = targetSet.size;
+    console.log('[Q#23] threshold=' + threshold + ', totalAchieved=' + totalAchieved +
+                ' → ' + (totalAchieved >= threshold ? '해결!' : '아직 진행 중'));
     let resolved = false;
     if (totalAchieved >= threshold) {
       activeQuest.resolved = true;
