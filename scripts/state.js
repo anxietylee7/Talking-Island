@@ -45,6 +45,23 @@ const state = {
     eventsFired: new Set(), // 이미 발동된 이벤트 id들
     cameraMode: 'cinematic', // 'cinematic' or 'free'
     cinematicTarget: null,   // 카메라가 추적 중인 npc id
+    // [시뮬 B 신규] 시뮬 도중 증거 팝업 등으로 일시정지 하기 위한 플래그.
+    //   paused=true 동안 runSimulationTick 이 즉시 return → 시간·이벤트·카메라 모두 정지.
+    //   재개 시 pausedAt 기준으로 startTime 을 보정해 "정지 동안의 실제 시간"을
+    //   가상 시각에 누적하지 않도록 한다 (그렇지 않으면 재개 직후 이벤트 여러 개가
+    //   한꺼번에 발동됨).
+    paused: false,
+    pausedAt: 0,
+    // [시뮬 C 신규 → 시뮬 A 확장] 시뮬 모드 — 'night' | 'ending' | 'cutscene'.
+    //   'night':    NIGHT_SCRIPTS[state.day] 재생. 기존 동작. phase 를 'night' 로 강제.
+    //   'ending':   ENDING_SCRIPTS[endingBranch] 재생. phase 는 그대로 (낮 조명 유지).
+    //               끝난 뒤 advanceToNightAndMorning 대신 runEndingPostEffects 실행.
+    //   'cutscene': CUTSCENE_SCRIPTS[cutsceneId] 재생. ending 과 거의 같지만
+    //               끝난 뒤 runCutscenePostEffects 가 실행되고 pendingOpenZetaNpcId 가
+    //               설정되어 있으면 자동으로 openZeta 를 호출해 대화창을 연다.
+    mode: 'night',
+    endingBranch: null,
+    cutsceneId: null,
   },
 };
 
@@ -176,7 +193,273 @@ const NIGHT_SCRIPTS = {
     // 장면 종료
     { id: 'd1_end', at: 1.48, type: 'end' },
   ],
-  // Day 2, 3 밤은 별도 카테고리에서 다룸
+
+  2: [ // Day 2 밤 — 야미가 밤톨을 찾아가 해명 시도 → 오해 굳어짐
+    // [시뮬 B 설계 노트]
+    //
+    // 서사: 야미가 가방을 들고 서점으로 감 → 밤톨이 나와 대면 →
+    //       야미가 가방을 보여주며 해명 ("이 한 권뿐") →
+    //       밤톨이 "그럼 사라진 한 권은?" 반박하고 들어가버림 →
+    //       야미 홀로 남아 있다가 돌아감.
+    //
+    // 구조: Day 1 과 동일 6장면 × 8초 = 48초. at 간격 0.12.
+    //       sim.speed=1 강제 (state.js startSleepSequence 에서 day===2 조건 포함).
+    //
+    // 신규 이벤트 타입 3종 사용:
+    //   - show:     NPC 를 특정 좌표에 등장시킴 (location='outside', visible=true)
+    //   - hide:     NPC 를 사라지게 함 (location=homeLocation, visible=false)
+    //   - evidence: 시뮬 일시정지 + 증거 팝업. 유저가 닫으면 재개.
+    //
+    // 스포일러 방지:
+    //   - 나레이션에 "한 권뿐" 직접 노출 금지 (야미 대사로만 전달)
+    //   - 시뮬 중 evidence 로 가방 내부 이미지가 "야미가 가방 열어 보이는 순간"에 뜸
+    //   - 씨앗 effects 의 showEvidencePopup 은 제거됨 (중복 방지) — bookstore.js 참고
+    //
+    // 좌표:
+    //   - 서점 문 좌표: (8, 3.5) — data.js LOCATIONS.door 참조
+    //   - 서점 안쪽:   (8, 6)   — 밤톨 퇴장 이동 지점
+    //   - 광장 중앙:   (0, 0)   — 야미 귀환 지점 (yami.homeLocation='outside')
+
+    // 장면 1 (0.76~): 분위기 설정
+    { id: 'd2_s1_intro', at: 0.76, type: 'narration',
+      text: '밤이 다시 내려앉았어요...' },
+
+    // 장면 2 (0.88~): 야미가 서점 문 앞으로 이동 + 카메라 야미
+    // [주의] 야미는 서점 문(8, 3.5) 보다 1유닛 앞(8, 2.5)에 서게 한다.
+    //        밤톨이 show 로 문 좌표에 등장하므로, 야미가 문에 너무 붙어있으면
+    //        두 NPC 메시(반경 0.5씩) 가 겹쳐 보임. 1유닛 거리가 마주보는 자연스러운 간격.
+    { id: 'd2_s2_yami_move', at: 0.88, type: 'move', npc: '야미',
+      to: { x: 8, z: 2.5 },
+      narration: '야미가 가방을 메고 서점으로 걸어가요.' },
+    { id: 'd2_s2_yami_cam', at: 0.88, type: 'camera', npc: '야미' },
+
+    // 장면 3 (1.00~): 야미 도착 → 문 두드림 → 첫 대사 → 밤톨 등장
+    { id: 'd2_s3_yami_knock', at: 1.00, type: 'narration',
+      text: '야미가 서점 문을 두드려요.' },
+    { id: 'd2_s3_yami_bubble', at: 1.02, type: 'bubble', npc: '야미',
+      text: '사장님, 오해가 있어요.', duration: 4 },
+    // 밤톨 등장 — 서점 문 좌표에 나타남. 야미의 대사가 끝나갈 무렵(1.02+4초≈1.06)
+    // 에 맞춰 "두드림에 응답해 문을 열고 나온" 타이밍.
+    { id: 'd2_s3_bamtol_show', at: 1.06, type: 'show', npc: '밤톨',
+      position: { x: 8, z: 3.5 } },
+
+    // 장면 4 (1.12~): 야미가 가방을 열어 보임 → evidence 팝업 (일시정지)
+    { id: 'd2_s4_yami_bubble', at: 1.12, type: 'bubble', npc: '야미',
+      text: '제 가방 보세요. 어제 가져간 건 이 한 권뿐이에요.', duration: 5 },
+    // evidence 팝업 — 1.12 대사 시작 후 2초, 말풍선 아직 떠있는 시점에 띄워
+    // "가방을 보여주는 순간"과 팝업 이미지가 정서적으로 묶이도록.
+    { id: 'd2_s4_evidence', at: 1.14, type: 'evidence',
+      assetKey: 'yami_backpack',
+      caption: '야미의 가방 속 — 책은 한 권뿐' },
+
+    // 장면 5 (1.24~): 밤톨 반박 → 서점 안으로 들어감
+    { id: 'd2_s5_bamtol_bubble', at: 1.24, type: 'bubble', npc: '밤톨',
+      text: '그럼 책장에서 사라진 한 권은요?', duration: 5 },
+    // 밤톨이 서점 중앙으로 이동 (걸어가는 과정 보여줌). (8, 3.5)→(8, 6) 거리 2.5유닛,
+    // NPC 속도 2.0유닛/초 → 약 1.25초 소요. 다음 hide 까지 2초 여유로 충분.
+    { id: 'd2_s5_bamtol_move', at: 1.30, type: 'move', npc: '밤톨',
+      to: { x: 8, z: 6 },
+      narration: '밤톨이 말없이 서점 안으로 들어가요.' },
+    // 밤톨 서점 안 도달 → 사라짐. location 도 bookstore 로 복원.
+    { id: 'd2_s5_bamtol_hide', at: 1.32, type: 'hide', npc: '밤톨' },
+
+    // 장면 6 (1.36~): 야미 홀로 남음 → 돌아감
+    { id: 'd2_s6_yami_alone', at: 1.36, type: 'narration',
+      text: '야미가 한참을 문 앞에 서 있어요.' },
+    { id: 'd2_s6_yami_home', at: 1.44, type: 'move', npc: '야미',
+      to: { x: 0, z: 0 }, // 광장 중앙 (yami.homeLocation='outside')
+      narration: '야미가 천천히 발길을 돌려요.' },
+
+    // 장면 종료
+    { id: 'd2_end', at: 1.48, type: 'end' },
+  ],
+};
+
+// =========================================================
+// [시뮬 C] 엔딩 시뮬레이션 스크립트 (high / low 분기)
+// =========================================================
+// 재생 경로: bookstore.js 의 ending effect → scenarioEngine 이 분기 선택 →
+//            startEndingSimulation(branchKey, pendingEffects) →
+//            runSimulationTick 이 ENDING_SCRIPTS[branchKey] 를 소비.
+//
+// 이벤트 타입 재사용: narration / move / camera / bubble / show / hide / evidence / end
+// 신규 타입 사용:    moveUser (유저 mesh 이동), camera{target:'user'} (유저 추적)
+//
+// at 기준: sim.speed=1. startEndingSimulation 이 시뮬 시작 시 state.timeOfDay 를
+//          엔딩 시작 시각(예: 0.5) 으로 세팅하지 않고, 대신 sim.startTime 만 기록하고
+//          virtualTime 계산은 "엔딩 진입 시각" 대비 경과 시각으로 한다.
+//          runSimulationTick 의 virtualTime 계산식이 night 시뮬과 다르지 않게
+//          하려면, ENDING_SCRIPTS 의 at 은 "엔딩 시작 후 가상 시각 증가분" 으로
+//          해석한다. 즉 at=0 이 시작 순간, at=0.72 이 48초 경과.
+//          실제 virtualTime 계산은 runSimulationTick 안에서 mode 분기로 처리.
+//
+// 스포일러·톤:
+//   - 나레이션에 "한 권" 같은 구체 사실 남발하지 않음
+//   - 엔딩 본문의 대사는 원작 텍스트 그대로 보존 (축 4 사용자 지시)
+//   - 유저 mesh 는 moveUser 로 움직이되, 원작 "당신" 주어 감각을 유지
+
+const ENDING_SCRIPTS = {
+  high: [
+    // 장면 1 (0~): 햇살 / 유저 카메라
+    { id: 'e_high_s1_intro', at: 0, type: 'narration',
+      text: '햇살이 도시 위로 다시 내려와요.' },
+    { id: 'e_high_s1_cam', at: 0.02, type: 'camera', target: 'user' },
+
+    // 장면 2 (0.10~): 유저 먼저 서점 쪽으로
+    { id: 'e_high_s2_user_move', at: 0.10, type: 'moveUser',
+      to: { x: 8, z: 4.5 },
+      narration: '당신이 서점 쪽으로 걸어가요.' },
+
+    // 장면 3 (0.20~): 밤톨이 뒤따라 나와 합류
+    { id: 'e_high_s3_bamtol_show', at: 0.20, type: 'show', npc: '밤톨',
+      position: { x: 8, z: 3.5 } },
+    { id: 'e_high_s3_bamtol_bubble', at: 0.22, type: 'bubble', npc: '밤톨',
+      text: '...같이 찾아봅시다.', duration: 4 },
+    { id: 'e_high_s3_user_move2', at: 0.26, type: 'moveUser',
+      to: { x: 8, z: 5.5 } }, // 서점 안쪽으로 더
+    { id: 'e_high_s3_bamtol_move', at: 0.26, type: 'move', npc: '밤톨',
+      to: { x: 8.7, z: 5 } }, // 유저 옆 살짝
+
+    // 장면 4 (0.36~): 함께 뒤짐
+    { id: 'e_high_s4_search', at: 0.36, type: 'narration',
+      text: '두 사람이 책장 구석구석을 살펴요.' },
+
+    // 장면 5 (0.48~): 책 발견 + 증거 팝업
+    { id: 'e_high_s5_notice', at: 0.48, type: 'narration',
+      text: '책장 밑에서 뭔가가 눈에 들어와요.' },
+    { id: 'e_high_s5_evidence', at: 0.50, type: 'evidence',
+      assetKey: 'missing_book_found',
+      caption: '책장 아래에서 발견된 책' },
+
+    // 장면 6 (0.60~): 밤톨의 결심
+    { id: 'e_high_s6_bamtol_bubble', at: 0.60, type: 'bubble', npc: '밤톨',
+      text: '...야미한테 사과해야겠네.', duration: 5 },
+    { id: 'e_high_s6_sigh', at: 0.66, type: 'narration',
+      text: '밤톨이 한숨을 쉬고 고개를 떨궈요.' },
+
+    // 장면 종료
+    { id: 'e_high_end', at: 0.72, type: 'end' },
+  ],
+
+  low: [
+    // 장면 1 (0~): 밤톨 부재 / 유저+야미로 시작
+    { id: 'e_low_s1_intro', at: 0, type: 'narration',
+      text: '밤톨은 여전히 문을 걸어둔 채예요.' },
+    { id: 'e_low_s1_cam', at: 0.02, type: 'camera', target: 'user' },
+
+    // 장면 2 (0.08~): 야미 등장, 유저+야미 서점 쪽으로
+    { id: 'e_low_s2_yami_show', at: 0.08, type: 'show', npc: '야미',
+      position: { x: 0, z: 0 } }, // 광장 중앙
+    { id: 'e_low_s2_user_move', at: 0.10, type: 'moveUser',
+      to: { x: 0, z: 0.8 }, // 야미 옆에서 합류
+      narration: '당신과 야미가 서점으로 향해요.' },
+    { id: 'e_low_s2_yami_move', at: 0.10, type: 'move', npc: '야미',
+      to: { x: 0, z: 1.5 } },
+
+    // 장면 3 (0.20~): 함께 서점 쪽으로 이동
+    { id: 'e_low_s3_user_move2', at: 0.20, type: 'moveUser',
+      to: { x: 8, z: 5 } },
+    { id: 'e_low_s3_yami_move2', at: 0.20, type: 'move', npc: '야미',
+      to: { x: 8.7, z: 5 } },
+
+    // 장면 4 (0.34~): 함께 뒤짐
+    { id: 'e_low_s4_search', at: 0.34, type: 'narration',
+      text: '두 사람이 책장 구석구석을 살펴요.' },
+
+    // 장면 5 (0.44~): 책 발견 + 증거 팝업
+    { id: 'e_low_s5_notice', at: 0.44, type: 'narration',
+      text: '책장 밑에서 뭔가가 눈에 들어와요.' },
+    { id: 'e_low_s5_evidence', at: 0.46, type: 'evidence',
+      assetKey: 'missing_book_found',
+      caption: '책장 아래에서 발견된 책' },
+
+    // 장면 6 (0.54~): 야미가 밤톨에게 감
+    { id: 'e_low_s6_bamtol_show', at: 0.54, type: 'show', npc: '밤톨',
+      position: { x: 8, z: 3.2 } }, // 서점 앞 (어제 시뮬 B 마지막 위치 이어지는 느낌)
+    { id: 'e_low_s6_yami_move3', at: 0.54, type: 'move', npc: '야미',
+      to: { x: 8, z: 4 } },
+    { id: 'e_low_s6_cam', at: 0.54, type: 'camera', npc: '야미' },
+    { id: 'e_low_s6_yami_bubble', at: 0.58, type: 'bubble', npc: '야미',
+      text: '사장님, 이것 좀 보세요.', duration: 4 },
+    { id: 'e_low_s6_receive', at: 0.64, type: 'narration',
+      text: '밤톨이 말없이 책을 받아들어요.' },
+    { id: 'e_low_s6_bow', at: 0.68, type: 'narration',
+      text: '밤톨이 조용히 고개를 떨궈요.' },
+
+    // 장면 종료
+    { id: 'e_low_end', at: 0.76, type: 'end' },
+  ],
+};
+
+// =========================================================
+// [시뮬 A] 컷신 시뮬레이션 스크립트 (낮 중간 연출용)
+// =========================================================
+// 재생 경로:
+//   bookstore.js 의 playCutscene effect → _applyEffects 가 해당 effect 에서 루프 break,
+//   뒤 effects 를 followUp 으로 수집 → startCutsceneSimulation(cutsceneId, followUp, openZetaNpcId)
+//   → 현재 UI 큐에 뭔가 표시 중이면 (evidence 팝업 등) 그게 닫힌 뒤에 시뮬 시작.
+//
+// 이벤트 타입 재사용: narration / move / camera / bubble / show / hide / end
+// 신규 타입 없음 (시뮬 B/C 엔진 그대로).
+//
+// at 기준: sim.speed=1. virtualTime = elapsedSec * 0.015 * 1 (엔딩과 동일 방식).
+//          at=0 이 시작 순간, at=0.58 이 약 38.7초 경과 시 종료.
+//
+// 스포일러·톤:
+//   - 나레이션에 구체 사실 직접 노출 금지 (밤톨의 오해 결론은 나레이션이 아닌 대사로만)
+//   - 차카는 평온·관찰 톤, 밤톨은 초반 수용 → S5 부터 굳어지는 대비
+
+const CUTSCENE_SCRIPTS = {
+  chaka_bamtol_photo_confrontation: [
+    // 장면 0 (0): NPC 배치 + 카메라. 페이드 중이라 유저에겐 안 보임.
+    { id: 'c1_s0_show_bamtol', at: 0, type: 'show', npc: '밤톨',
+      position: { x: -6.5, z: -5 } },
+    { id: 'c1_s0_show_chaka', at: 0, type: 'show', npc: '차카',
+      position: { x: -8, z: -4.5 } },
+    { id: 'c1_s0_cam', at: 0, type: 'camera', npc: '차카' },
+
+    // 장면 1 (0.02~): 밤톨이 먼저 말을 건넴
+    { id: 'c1_s1_bamtol', at: 0.02, type: 'bubble', npc: '밤톨',
+      text: '저기, 차카. 이 사진...', duration: 3 },
+
+    // 장면 2 (0.08~): 차카가 사진 설명
+    { id: 'c1_s2_chaka', at: 0.08, type: 'bubble', npc: '차카',
+      text: '어제 밤에 찍은 거에요. 서점 근처 야경이요.', duration: 4 },
+
+    // 장면 2b (0.15~): 밤톨이 사진을 들여다봄 (유저 시선을 밤톨 쪽으로)
+    { id: 'c1_s2b_lookcloser', at: 0.15, type: 'narration',
+      text: '밤톨이 사진을 가까이 들여다봐요.' },
+
+    // 장면 3 (0.20~): 밤톨의 관찰 — 아직 수용 톤. 톤 주의: "~군" (speechHabit).
+    { id: 'c1_s3_bamtol', at: 0.20, type: 'bubble', npc: '밤톨',
+      text: '야미가 책 찾으러 왔던 모양이군.', duration: 4 },
+
+    // 장면 4 (0.27~): 차카의 무심한 한 마디 — 왜곡의 방아쇠.
+    { id: 'c1_s4_chaka', at: 0.27, type: 'bubble', npc: '차카',
+      text: '아, 그러고 보니. 야미는 책을 참 많이 사더라고요.', duration: 4.5 },
+
+    // 장면 5 (0.35~): 밤톨의 짧은 반응 — 머릿속 스위치가 켜짐.
+    { id: 'c1_s5_bamtol_what', at: 0.35, type: 'bubble', npc: '밤톨',
+      text: '...많이?', duration: 3 },
+
+    // 장면 6 (0.40~): 밤톨의 혼잣말 — 예약 장부와 충돌.
+    { id: 'c1_s6_bamtol_book', at: 0.40, type: 'bubble', npc: '밤톨',
+      text: '어제 예약은 한 권이었는데.', duration: 4 },
+
+    // 장면 7 (0.47~): 결심.
+    { id: 'c1_s7_bamtol_go', at: 0.47, type: 'bubble', npc: '밤톨',
+      text: '내가 한번 가 봐야겠군.', duration: 3 },
+
+    // 장면 8 (0.52~): 밤톨이 떠남. 광장 방향(-3, -3).
+    //   컷신 끝난 뒤 밤톨은 이 자리에 남음 — "광장으로 돌아서 간 뒤"의 연속감.
+    //   hide 하지 않으므로 이어지는 낮 씬에서 밤톨이 (-3, -3) 근처에 자연스럽게 존재.
+    { id: 'c1_s8_bamtol_leave', at: 0.52, type: 'move', npc: '밤톨',
+      to: { x: -3, z: -3 },
+      narration: '밤톨이 돌아서서 광장 쪽으로 떠나요.' },
+
+    // 장면 종료
+    { id: 'c1_end', at: 0.58, type: 'end' },
+  ],
 };
 
 function showNotification(msg) {
@@ -283,8 +566,16 @@ function startSleepSequence() {
     sim.eventsFired = new Set();
     sim.cameraMode = 'cinematic';
     sim.cinematicTarget = null;
+    // [시뮬 C/A 추가] 밤 시뮬 모드 명시. 엔딩/컷신 시뮬 재생 후 endSimulation 에서
+    // 이미 리셋되지만, 방어적으로 한번 더 세팅 (동시 호출/레이스 대비).
+    sim.mode = 'night';
+    sim.endingBranch = null;
+    sim.cutsceneId = null;
     // [카테고리 1 수정] Day 1 은 느긋하게 (4초 간격 연출 설계), 그 외엔 기본 3배속
-    sim.speed = (state.day === 1) ? 1 : 3;
+    // [시뮬 B 추가] Day 2 밤 시뮬도 speed=1 — Day 1 과 동일한 템포 (장면당 8초) 로 설계됨.
+    //              at 간격 0.12 × 스크립트 시계 0.015 = 장면당 8초 (speed=1 전제).
+    //              3배속으로 돌리면 장면당 2.7초밖에 안 되어 유저가 인지할 시간이 없음.
+    sim.speed = (state.day === 1 || state.day === 2) ? 1 : 3;
     
     // 3) 현재 시각을 "저녁 시작"으로 맞춤 (0.75 부근부터 스크립트 진행)
     state.timeOfDay = 0.74;
@@ -303,6 +594,234 @@ function startSleepSequence() {
     // 6) 페이드 인
     setTimeout(() => fadeFromBlack(1000), 300);
   });
+}
+
+// =========================================================
+// [시뮬 C] 엔딩 시뮬레이션 진입점
+// =========================================================
+// scenarioEngine.js 의 ending effect 핸들러가 분기 선택 후 호출.
+//   - branchKey:      'high' | 'low' 등 ENDING_SCRIPTS 의 키
+//   - pendingEffects: 엔딩 branch 의 effects 배열 (changeAffinity 등).
+//                     이 배열은 시뮬 끝난 뒤 runEndingPostEffects 에서 실행.
+//
+// 차이점 (startSleepSequence 대비):
+//   - 침대/수면 개념 없음. 낮에 발동.
+//   - phase 를 'night' 로 강제하지 않음 (runSimulationTick 이 mode 보고 판단).
+//   - endSimulation 에서 advanceToNightAndMorning 호출하지 않음 (mode 분기).
+//   - sim.speed = 1 강제 (유저 인지 속도 유지).
+//   - mode='ending', endingBranch=branchKey 세팅.
+//   - virtualTime 기준을 엔딩 진입 순간으로 하기 위해 startTime 만 기록.
+let __pendingEndingEffects = null;
+
+function startEndingSimulation(branchKey, pendingEffects) {
+  if (!ENDING_SCRIPTS[branchKey]) {
+    console.warn('[sim] startEndingSimulation: 스크립트 없음. branchKey=' + branchKey);
+    // 스크립트 없으면 바로 post-effects 만 실행하고 끝냄.
+    __pendingEndingEffects = pendingEffects || null;
+    runEndingPostEffects();
+    return;
+  }
+  console.log('[sim] startEndingSimulation: branchKey=' + branchKey);
+
+  // 대기 중인 effects 저장 (시뮬 종료 시 runEndingPostEffects 가 실행).
+  __pendingEndingEffects = pendingEffects || [];
+
+  // 현재 인테리어 안이면 마을 뷰로 빠져나옴 (엔딩은 서점 외곽에서 벌어짐).
+  if (state.viewMode === 'interior' && typeof exitInterior === 'function') {
+    exitInterior();
+  }
+
+  // 페이드 후 시뮬 시작.
+  fadeToBlack(1000, () => {
+    const sim = state.simulation;
+    sim.active = true;
+    sim.mode = 'ending';
+    sim.endingBranch = branchKey;
+    sim.startTime = performance.now();
+    sim.eventsFired = new Set();
+    sim.cameraMode = 'cinematic';
+    sim.cinematicTarget = null;
+    sim.speed = 1;
+    sim.paused = false;
+    sim.pausedAt = 0;
+
+    // 카메라 초기 위치 — 서점 근처로 살짝 미리 당겨놓음.
+    cameraAngle = Math.PI / 4;
+    cameraPitch = Math.PI / 3.5;
+    cameraDist = 22;
+    cameraTarget.set(4, 0, 3);
+    updateCamera();
+
+    // 시뮬 UI 표시
+    showSimulationUI();
+
+    // 페이드 인
+    setTimeout(() => fadeFromBlack(1000), 300);
+  });
+}
+
+// [시뮬 C] 엔딩 시뮬 종료 후 실행.
+//   - __pendingEndingEffects (changeAffinity 등) 를 scenarioEngine 의 _applyEffects 로 실행.
+//   - engine 객체가 없거나 실행 불가 상태면 경고만 찍고 넘어감 (유저 경험상 치명적이지 않음).
+function runEndingPostEffects() {
+  const effects = __pendingEndingEffects;
+  __pendingEndingEffects = null;
+  if (!effects || !effects.length) {
+    console.log('[sim] runEndingPostEffects: 실행할 effects 없음');
+    return;
+  }
+  if (typeof window !== 'undefined' && window.scenarioEngine &&
+      typeof window.scenarioEngine.applyEndingPostEffects === 'function') {
+    try {
+      window.scenarioEngine.applyEndingPostEffects(effects);
+    } catch (err) {
+      console.error('[sim] runEndingPostEffects: 실행 오류', err);
+    }
+  } else {
+    console.warn('[sim] runEndingPostEffects: scenarioEngine.applyEndingPostEffects 미정의');
+  }
+}
+
+// =========================================================
+// [시뮬 A] 컷신 시뮬레이션 진입점
+// =========================================================
+// scenarioEngine 의 _applyEffects 안에서 playCutscene effect 를 만나면 호출.
+//   - cutsceneId:           CUTSCENE_SCRIPTS 의 키
+//   - followUpEffects:      playCutscene 이후에 오던 나머지 effects (evidence 는 이미 앞에서
+//                           처리되어 여기엔 오지 않음. addRumor/changeAffinity/injectNpcContext/
+//                           npcSpeaksFirst 등이 들어옴)
+//   - openZetaNpcId:        컷신 끝난 뒤 자동으로 열 대화창의 NPC id (예: 'chaka')
+//
+// UI 큐가 비어있지 않으면 (예: 바로 앞에 뜬 evidence 팝업이 아직 열려 있음)
+// 그게 닫힌 뒤에 시작한다. 이를 위해 scenarioEngine 의 _uiQueue.afterComplete 슬롯을 사용.
+//
+// 시작 시:
+//   - fadeToBlack 으로 화면을 검게 만들고, 그 안에서 NPC 텔레포트 + 카메라 재세팅.
+//   - 스크립트의 at=0 이벤트(show/camera)가 첫 프레임에 발동.
+//   - fadeFromBlack.
+let __pendingCutsceneFollowUp = null;
+let __pendingOpenZetaNpcId = null;
+
+function startCutsceneSimulation(cutsceneId, followUpEffects, openZetaNpcId) {
+  if (!CUTSCENE_SCRIPTS[cutsceneId]) {
+    console.warn('[sim] startCutsceneSimulation: 스크립트 없음. cutsceneId=' + cutsceneId);
+    // 컷신 못 찾으면 followUp 바로 실행 + 대화창 열기
+    __pendingCutsceneFollowUp = followUpEffects || null;
+    __pendingOpenZetaNpcId = openZetaNpcId || null;
+    runCutscenePostEffects();
+    return;
+  }
+  console.log('[sim] startCutsceneSimulation: cutsceneId=' + cutsceneId);
+
+  // [시뮬 A 중요] 즉시 플래그 세팅 — selectNpc 등 호출부가 컷신 개시 직후
+  // 이어서 openZeta 등을 호출하지 않도록 차단용. sim.active 는 fadeToBlack 콜백
+  // 이후에야 true 가 되므로 그 사이 공백을 이 플래그가 메운다.
+  // endSimulation 또는 _startCutsceneCore 진입 시 해제.
+  state.cutscenePending = true;
+
+  __pendingCutsceneFollowUp = followUpEffects || [];
+  __pendingOpenZetaNpcId = openZetaNpcId || null;
+
+  // UI 큐에 뭔가 표시 중이면 (evidence 팝업 등) 그게 닫힌 뒤에 컷신 시작.
+  // scenarioEngine 의 _uiQueue 상태를 확인. afterComplete 슬롯에 자기를 걸어둠.
+  const waitForUi = function () {
+    const engine = (typeof window !== 'undefined') ? window.scenarioEngine : null;
+    if (engine && engine._uiQueueState &&
+        (engine._uiQueueState.current || engine._uiQueueState.pending.length > 0)) {
+      // 엔진이 큐 비워질 때 호출할 콜백 등록.
+      if (typeof engine.onUiQueueDrain === 'function') {
+        engine.onUiQueueDrain(_startCutsceneCore.bind(null, cutsceneId));
+        return;
+      }
+      // fallback: 폴링 (스윽 확인만. 100ms 간격)
+      const poll = setInterval(function () {
+        const s = engine._uiQueueState;
+        if (!s.current && s.pending.length === 0) {
+          clearInterval(poll);
+          _startCutsceneCore(cutsceneId);
+        }
+      }, 100);
+      return;
+    }
+    // 큐 비어있으면 즉시 시작
+    _startCutsceneCore(cutsceneId);
+  };
+
+  waitForUi();
+}
+
+// [시뮬 A 내부] 실제 컷신 시뮬을 시작하는 코어 함수.
+function _startCutsceneCore(cutsceneId) {
+  // 인테리어 안이면 빠져나옴 (컷신은 마을 외부 기준)
+  if (state.viewMode === 'interior' && typeof exitInterior === 'function') {
+    exitInterior();
+  }
+
+  fadeToBlack(800, () => {
+    const sim = state.simulation;
+    sim.active = true;
+    sim.mode = 'cutscene';
+    sim.cutsceneId = cutsceneId;
+    sim.endingBranch = null;
+    sim.startTime = performance.now();
+    sim.eventsFired = new Set();
+    sim.cameraMode = 'cinematic';
+    sim.cinematicTarget = null;
+    sim.speed = 1;
+    sim.paused = false;
+    sim.pausedAt = 0;
+
+    // sim.active 가 true 가 됐으므로 cutscenePending 은 이제 필요 없음 — 해제.
+    // (selectNpc 등 외부 호출부는 sim.active 로 차단됨)
+    state.cutscenePending = false;
+
+    // 카메라 초기 위치 — 사진관(-8, -6) 근처로 미리 당겨놓음.
+    // CUTSCENE_SCRIPTS 의 S0 camera 이벤트가 첫 프레임에 발동하면서 차카 타겟이 설정됨.
+    cameraAngle = Math.PI / 4;
+    cameraPitch = Math.PI / 3.5;
+    cameraDist = 18;
+    cameraTarget.set(-8, 0, -5);
+    updateCamera();
+
+    showSimulationUI();
+
+    setTimeout(() => fadeFromBlack(800), 200);
+  });
+}
+
+// [시뮬 A] 컷신 시뮬 종료 후 실행.
+//   1) pendingCutsceneFollowUp 의 effects 를 scenarioEngine._applyEffectsDirect 로 실행
+//      (changeAffinity/addRumor/injectNpcContext/npcSpeaksFirst 등)
+//   2) UI 큐가 비어있다는 전제 하에 (followUp 에 팝업 effect 는 이제 없음) 바로
+//      openZeta(pendingOpenZetaNpcId) 호출해 대화창 오픈.
+function runCutscenePostEffects() {
+  const followUp = __pendingCutsceneFollowUp;
+  const zetaId   = __pendingOpenZetaNpcId;
+  __pendingCutsceneFollowUp = null;
+  __pendingOpenZetaNpcId = null;
+
+  // followUp effects 실행 (비시각적 — 팝업 없음)
+  if (Array.isArray(followUp) && followUp.length > 0) {
+    if (typeof window !== 'undefined' && window.scenarioEngine &&
+        typeof window.scenarioEngine.applyCutsceneFollowUp === 'function') {
+      try {
+        window.scenarioEngine.applyCutsceneFollowUp(followUp);
+      } catch (err) {
+        console.error('[sim] runCutscenePostEffects: followUp 실행 오류', err);
+      }
+    } else {
+      console.warn('[sim] runCutscenePostEffects: scenarioEngine.applyCutsceneFollowUp 미정의');
+    }
+  }
+
+  // 대화창 자동 오픈
+  if (zetaId && typeof openZeta === 'function') {
+    // 약간의 지연을 두어 페이드 인이 어느 정도 진행된 뒤 대화창이 뜨게.
+    setTimeout(() => {
+      try { openZeta(zetaId); }
+      catch (err) { console.error('[sim] runCutscenePostEffects: openZeta 오류', err); }
+    }, 500);
+  }
 }
 
 // 시뮬레이션 UI (배속 표시 + 스킵 버튼 + 이벤트 알림)
@@ -370,18 +889,37 @@ function fireScriptEvent(ev) {
     if (ev.narration) setSimulationEventLabel(ev.narration);
   }
   
-  if (ev.type === 'camera' && ev.npc) {
-    // 시네마틱 모드일 때만 카메라 이동 (자유 모드면 무시)
+  if (ev.type === 'camera') {
+    // [시뮬 C 신규] ev.target === 'user' 면 유저 mesh 를 카메라 타겟으로.
+    //   저장값은 예약어 '__user__' — cinematicTarget 추적 로직이 이걸 보면
+    //   npcMeshes 가 아니라 state.user.mesh 를 따라간다.
+    // 기존: ev.npc 에 NPC 이름을 받음. 호환 유지.
     if (state.simulation.cameraMode === 'cinematic') {
-      const target = state.npcs.find(n => n.name === ev.npc);
-      if (target) {
-        state.simulation.cinematicTarget = target.id;
+      if (ev.target === 'user') {
+        state.simulation.cinematicTarget = '__user__';
+      } else if (ev.npc) {
+        const target = state.npcs.find(n => n.name === ev.npc);
+        if (target) {
+          state.simulation.cinematicTarget = target.id;
+        }
       }
     }
     if (ev.label) {
       // 상단 라벨은 이벤트 라벨로 덮어씌우되 앞에 ★ 표시
       setSimulationEventLabel('★ ' + ev.label);
     }
+  }
+
+  // [시뮬 C 신규] 유저 mesh 를 특정 좌표로 이동.
+  //   scene.js 의 moveUserTo 함수 재사용. NPC 의 move 이벤트와 달리
+  //   pendingNpcId/stopDistance 는 안 넘긴다 (엔딩 시뮬에선 특정 NPC 추적
+  //   이동이 아니라 단순 지점 이동만 필요).
+  //   동시에 ev.narration 이 있으면 하단 자막도 띄움 (move 와 동일).
+  if (ev.type === 'moveUser' && ev.to) {
+    if (typeof moveUserTo === 'function') {
+      moveUserTo(ev.to.x, ev.to.z);
+    }
+    if (ev.narration) setSimulationEventLabel(ev.narration);
   }
 
   // [Wave 2 / 이슈 C] 시뮬레이션 중 NPC 머리 위 말풍선 표시.
@@ -402,6 +940,59 @@ function fireScriptEvent(ev) {
     }
   }
   
+  // [시뮬 B 신규] NPC 를 특정 좌표에 등장시킴.
+  //   - mesh.visible = true
+  //   - npc.location = 'outside' (낮 스케줄러와 동기화)
+  //   - speechBubbleEl 노출
+  //   - 필요시 position 강제 세팅
+  // [시뮬 B 신규] NPC 를 특정 좌표에 등장시킴.
+  //   - mesh.visible = true
+  //   - npc.location = 'outside' (낮 스케줄러와 동기화)
+  //   - speechBubbleEl 노출
+  //   - 필요시 position 강제 세팅
+  //   - [시뮬 A 추가] 이동 상태 리셋 — 텔레포트 후 이전 targetPos 방향으로 계속 걷는 걸 방지
+  // 주의: 이 상태로 시뮬 끝나면 endSimulation 안전망에서 homeLocation 으로 복원됨.
+  if (ev.type === 'show' && ev.npc) {
+    const target = state.npcs.find(n => n.name === ev.npc);
+    if (target && npcMeshes[target.id]) {
+      const m = npcMeshes[target.id];
+      if (ev.position) {
+        m.mesh.position.set(ev.position.x, 0, ev.position.z);
+      }
+      m.mesh.visible = true;
+      if (m.speechBubbleEl) m.speechBubbleEl.classList.remove('hide');
+      target.location = 'outside';
+      // 이전 스케줄러/자유 이동 상태 전부 리셋
+      m.state = 'idle';
+      m.targetPos = null;
+      m.scriptedTarget = null;
+      m.idleTimer = 99; // 시뮬 동안 스스로 방황 안 시작하도록 큰 값
+    }
+  }
+
+  // [시뮬 B 신규] NPC 를 사라지게 함.
+  //   - mesh.visible = false
+  //   - npc.location = homeLocation (원상복구)
+  //   - speechBubbleEl / chatBubbleEl 둘 다 숨김
+  if (ev.type === 'hide' && ev.npc) {
+    const target = state.npcs.find(n => n.name === ev.npc);
+    if (target && npcMeshes[target.id]) {
+      const m = npcMeshes[target.id];
+      m.mesh.visible = false;
+      if (m.speechBubbleEl) m.speechBubbleEl.classList.add('hide');
+      if (m.chatBubbleEl) m.chatBubbleEl.classList.add('hide');
+      target.location = target.homeLocation || 'outside';
+    }
+  }
+
+  // [시뮬 B 신규] 시뮬 도중 증거 팝업.
+  //   - sim.paused = true 로 시간 정지
+  //   - pausedAt 기록 → 재개 시 startTime 보정
+  //   - 팝업 닫기 버튼에 hook 을 걸어 재개 트리거
+  if (ev.type === 'evidence' && ev.assetKey) {
+    showEvidencePopupInSim(ev.assetKey, ev.caption || '');
+  }
+
   if (ev.type === 'end') {
     endSimulation();
   }
@@ -411,51 +1002,84 @@ function fireScriptEvent(ev) {
 function runSimulationTick(dt) {
   const sim = state.simulation;
   if (!sim.active) return;
+  // [시뮬 B 신규] evidence 이벤트로 인한 일시정지 중에는 시간·이벤트·카메라 모두 정지.
+  // pausedAt 은 showEvidencePopupInSim 이 기록해 두고 재개 시 startTime 보정에 사용.
+  if (sim.paused) return;
   
-  // 1) 시간 흐름 (3배속)
-  state.timeOfDay += dt * 0.015 * sim.speed; // 기본 속도의 3배
+  // 1) 시간 흐름
+  state.timeOfDay += dt * 0.015 * sim.speed;
 
   // [Wave 3 이슈 β] 시뮬레이션 중 timeOfDay 가 1.0 을 넘어 wrap 되면
   // 새벽/아침 범위(0.15~0.4) 로 떨어져 scene.js 조명이 하늘을 밝게 칠해버림.
   // → 시뮬 내내 "한밤" 조명 유지하도록 wrap 시 0.0 ~ 0.12 사이로 유지.
-  if (state.timeOfDay >= 1) {
-    state.timeOfDay = state.timeOfDay - 1;
-    // wrap 된 값이 0.12 를 넘으면 강제로 0.10 으로 (한밤 범위)
-    if (state.timeOfDay > 0.12) state.timeOfDay = 0.10;
+  // [시뮬 C/A 수정] 단, 이 wrap/clamp 는 night 모드일 때만 적용.
+  //              ending/cutscene 모드는 낮 조명을 유지해야 하므로 timeOfDay 를 건드리지 않는다.
+  const isDayMode = (sim.mode === 'ending' || sim.mode === 'cutscene');
+  if (!isDayMode) {
+    if (state.timeOfDay >= 1) {
+      state.timeOfDay = state.timeOfDay - 1;
+      if (state.timeOfDay > 0.12) state.timeOfDay = 0.10;
+    }
   }
-  
+
   // 시뮬레이션 중에는 phase 를 무조건 'night' 로 고정.
   // NIGHT_SCRIPTS 가 가상 시간으로 1.06~1.48 까지 돌 수 있어서 phase 판정이 꼬이는 것 방지.
-  state.phase = 'night';
-  
-  // phase 라벨 업데이트
+  // [시뮬 C/A 수정] night 모드에서만 phase 강제. ending/cutscene 모드는 낮 그대로 유지.
+  if (!isDayMode) {
+    state.phase = 'night';
+  }
+
+  // phase 라벨 업데이트 (모드별 분기)
   const phaseLabel = document.getElementById('sim-phase-label');
   if (phaseLabel) {
-    phaseLabel.textContent = '🌙 밤';
+    if (sim.mode === 'ending')       phaseLabel.textContent = '✨ 엔딩';
+    else if (sim.mode === 'cutscene') phaseLabel.textContent = '🎬 장면';
+    else                              phaseLabel.textContent = '🌙 밤';
   }
-  
+
   // 2) 스크립트 이벤트 체크
-  const script = NIGHT_SCRIPTS[state.day] || [];
-  // at 값이 0.74보다 작은 이벤트(다음날 아침 등)는 timeOfDay가 한바퀴 돈 값으로 취급
-  // 단순화: 시뮬레이션이 시작된 이후 경과한 "가상 시각"을 계산
+  // [시뮬 C/A 수정] mode 에 따라 소스 스크립트와 virtualTime 기준이 다르다.
+  //   - night:    NIGHT_SCRIPTS[state.day]. virtualTime = 0.74 + elapsedSec * 0.015 * speed
+  //               (at 값이 0.74 미만이면 다음날로 해석해 +1)
+  //   - ending:   ENDING_SCRIPTS[sim.endingBranch]. virtualTime = elapsedSec * 0.015 * speed
+  //               (at 값은 0 부터 시작)
+  //   - cutscene: CUTSCENE_SCRIPTS[sim.cutsceneId]. 기준은 ending 과 동일.
+  let script;
+  let virtualTime;
   const elapsedSec = (performance.now() - sim.startTime) / 1000;
-  // 시작 시 timeOfDay=0.74였으므로 가상 시각 = 0.74 + elapsedSec * 0.015 * speed
-  const virtualTime = 0.74 + elapsedSec * 0.015 * sim.speed;
-  
+  if (sim.mode === 'ending') {
+    script = ENDING_SCRIPTS[sim.endingBranch] || [];
+    virtualTime = elapsedSec * 0.015 * sim.speed;
+  } else if (sim.mode === 'cutscene') {
+    script = CUTSCENE_SCRIPTS[sim.cutsceneId] || [];
+    virtualTime = elapsedSec * 0.015 * sim.speed;
+  } else {
+    script = NIGHT_SCRIPTS[state.day] || [];
+    virtualTime = 0.74 + elapsedSec * 0.015 * sim.speed;
+  }
+
   for (const ev of script) {
-    // ev.at이 0.74보다 작으면(예: 1.05) 다음 날로 봄
-    const evTime = ev.at < 0.74 ? ev.at + 1 : ev.at;
+    // night 모드에서 ev.at 이 0.74 보다 작으면 다음날(+1) 로 해석.
+    // ending/cutscene 모드는 모든 at 이 0 이상이므로 그대로 사용.
+    const evTime = (!isDayMode && ev.at < 0.74) ? ev.at + 1 : ev.at;
     if (virtualTime >= evTime && !sim.eventsFired.has(ev.id)) {
       sim.eventsFired.add(ev.id);
       fireScriptEvent(ev);
     }
   }
-  
+
   // 3) 시네마틱 카메라 추적 (cinematicTarget이 있을 때 부드럽게 따라감)
+  // [시뮬 C 수정] cinematicTarget === '__user__' 면 유저 mesh 를 따라간다.
   if (sim.cameraMode === 'cinematic' && sim.cinematicTarget != null) {
-    const targetMesh = npcMeshes[sim.cinematicTarget]?.mesh;
+    let targetMesh = null;
+    if (sim.cinematicTarget === '__user__') {
+      targetMesh = state.user && state.user.mesh ? state.user.mesh : null;
+    } else {
+      const m = npcMeshes[sim.cinematicTarget];
+      targetMesh = m ? m.mesh : null;
+    }
     if (targetMesh) {
-      // cameraTarget을 NPC 위치로 부드럽게 lerp
+      // cameraTarget을 NPC/유저 위치로 부드럽게 lerp
       cameraTarget.x += (targetMesh.position.x - cameraTarget.x) * dt * 2;
       cameraTarget.z += (targetMesh.position.z - cameraTarget.z) * dt * 2;
       // 거리도 살짝 줄여서 가까이 (18 정도)
@@ -466,30 +1090,121 @@ function runSimulationTick(dt) {
 }
 
 // 시뮬레이션 종료 — 페이드 아웃 → 집 복귀 → 다음날 아침
+// [시뮬 C 수정] mode 가 'ending' 이면 아침으로 넘어가지 않고 낮 자유 탐색으로 복귀.
 function endSimulation() {
   const sim = state.simulation;
   if (!sim.active) return;
+
+  // [시뮬 C] mode 를 로컬에 캡처 — 아래에서 sim.mode 를 리셋한 뒤에도 분기 판단 가능하게.
+  const endedMode = sim.mode;
+
   sim.active = false;
   sim.cinematicTarget = null;
-  
+
+  // [시뮬 A 안전망] cutscenePending 해제 (에러 경로에서 남아있을 경우 대비).
+  state.cutscenePending = false;
+
+  // [시뮬 B 신규] 안전망: paused 상태에서 스킵 버튼을 눌렀거나, evidence 팝업이 열린
+  // 상태로 end 이벤트가 들어온 경우 정리.
+  sim.paused = false;
+  sim.pausedAt = 0;
+  // evidence 팝업 닫기
+  const evMod = document.getElementById('evidence-modal');
+  if (evMod) evMod.classList.remove('show');
+  // 시뮬 중 show 로 꺼내진 NPC 중 원래 집이 있는 애들 location 복원.
+  (state.npcs || []).forEach(npc => {
+    if (
+      npc.homeLocation &&
+      npc.homeLocation !== 'outside' &&
+      npc.location === 'outside'
+    ) {
+      const m = npcMeshes[npc.id];
+      if (m) {
+        npc.location = npc.homeLocation;
+        if (m.speechBubbleEl) m.speechBubbleEl.classList.add('hide');
+        if (m.chatBubbleEl) m.chatBubbleEl.classList.add('hide');
+        m.mesh.visible = false;
+      }
+    }
+  });
+
   // NPC들의 scriptedTarget 해제
   Object.values(npcMeshes).forEach(n => { n.scriptedTarget = null; });
-  
+  // [시뮬 C 신규] 유저 이동도 멈춤 (ending 모드에서 moveUser 를 쓴 경우 대비).
+  if (state.user) {
+    state.user.moving = false;
+    state.user.targetPos = null;
+    state.user.onArrive = null;
+    state.user.pendingNpcId = null;
+  }
+
   hideSimulationUI();
-  
+
+  // [시뮬 C] mode 별 종료 경로 분기.
+  if (endedMode === 'ending') {
+    // 엔딩 시뮬 종료 — 페이드 후 엔딩 post-effects(팝업/호감도) 실행하고 낮으로 복귀.
+    fadeToBlack(1000, () => {
+      // 카메라 기본 위치로
+      cameraAngle = Math.PI / 4;
+      cameraPitch = Math.PI / 3.5;
+      cameraDist = 30;
+      cameraTarget.set(0, 0, 0);
+      updateCamera();
+
+      // 엔딩 post-effects 실행 (changeAffinity 등). showStoryModal / showEvidencePopup
+      // 은 scenarios/bookstore.js 에서 이미 제거되어 effects 안에 없다.
+      if (typeof runEndingPostEffects === 'function') {
+        runEndingPostEffects();
+      }
+
+      // mode 리셋
+      sim.mode = 'night';
+      sim.endingBranch = null;
+
+      // 페이드 인 (낮 자유 탐색 복귀)
+      setTimeout(() => fadeFromBlack(1200), 300);
+    });
+    return;
+  }
+
+  // [시뮬 A] cutscene 종료 — 페이드 후 followUp effects + 대화창 자동 오픈.
+  if (endedMode === 'cutscene') {
+    fadeToBlack(800, () => {
+      // 카메라 복원
+      cameraAngle = Math.PI / 4;
+      cameraPitch = Math.PI / 3.5;
+      cameraDist = 30;
+      cameraTarget.set(0, 0, 0);
+      updateCamera();
+
+      // followUp effects 실행 (addRumor, changeAffinity, injectNpcContext, npcSpeaksFirst 등)
+      // 그리고 대화창 자동 오픈.
+      if (typeof runCutscenePostEffects === 'function') {
+        runCutscenePostEffects();
+      }
+
+      // mode 리셋
+      sim.mode = 'night';
+      sim.cutsceneId = null;
+
+      // 페이드 인 (낮 자유 탐색 복귀)
+      setTimeout(() => fadeFromBlack(800), 200);
+    });
+    return;
+  }
+
+  // 기존 night 시뮬 종료 경로 — 페이드 아웃 → advanceToNightAndMorning → 페이드 인.
   fadeToBlack(1200, () => {
     state.user.isSleeping = false;
-    
+
     // 카메라 기본 위치로
     cameraAngle = Math.PI / 4;
     cameraPitch = Math.PI / 3.5;
     cameraDist = 30;
     cameraTarget.set(0, 0, 0);
     updateCamera();
-    
+
     // 기존 advanceToNightAndMorning을 호출해서 리포트/퀘스트 생성 로직이 실행되게 함.
-    // 단, 밤 시뮬레이션은 이미 봤으므로 상태를 이미 '다음날 준비된' 것처럼 세팅.
-    // advanceToNightAndMorning 내부에서 API 호출 등으로 시간이 걸리므로, 그 사이 페이드 유지.
     advanceToNightAndMorning().then(() => {
       setTimeout(() => fadeFromBlack(1200), 400);
     }).catch(err => {
@@ -694,6 +1409,59 @@ function showEvidencePopup(assetKey, context) {
 window.__closeEvidence = function() {
   document.getElementById('evidence-modal').classList.remove('show');
 };
+
+// =========================================================
+// [시뮬 B 신규] 시뮬 도중에 뜨는 증거 팝업.
+// =========================================================
+// 일반 showEvidencePopup 과의 차이:
+//   1. 시뮬 일시정지 트리거 (sim.paused=true, pausedAt 기록)
+//   2. __closeEvidence 를 임시로 wrap 해서 "닫기 누르면 시뮬 재개" 로직 추가
+//   3. 재개 시 startTime 을 보정하여 "정지 동안 경과한 실제 시간" 을
+//      가상 시각에 누적하지 않도록 함 (안 하면 재개 직후 이벤트 여러 개가
+//      한꺼번에 발동됨).
+//
+// 안전 장치:
+//   - 이미 paused 상태면 덮어쓰지 않고 바로 return (중복 호출 방어)
+//   - 이미지 에셋이 없으면(assetRegistry 미등록) 팝업 자체가 뜨지 않으므로
+//     paused 걸린 채 영영 안 풀릴 위험 있음 → 그 경우는 일시정지 자체를 안 건다.
+function showEvidencePopupInSim(assetKey, caption) {
+  const sim = state.simulation;
+
+  // 이미지 없으면 notification 만 뜨고 팝업 DOM 이 열리지 않음 → 재개 훅을 못 걸게 되므로
+  // 일시정지를 걸지 않고 notification 만 띄우고 끝낸다.
+  const img = assetRegistry[assetKey];
+  if (!img) {
+    showEvidencePopup(assetKey, caption); // 내부에서 notification 경로 처리
+    return;
+  }
+
+  // 중복 호출 방어 — 이미 paused 상태면 새로 안 건다.
+  if (sim.paused) {
+    showEvidencePopup(assetKey, caption); // 팝업만 띄움
+    return;
+  }
+
+  // 1) 일시정지 트리거
+  sim.paused = true;
+  sim.pausedAt = performance.now();
+
+  // 2) 팝업 표시
+  showEvidencePopup(assetKey, caption);
+
+  // 3) 닫기 핸들러 wrap — 기존 핸들러 호출 후 시뮬 재개
+  const originalClose = window.__closeEvidence;
+  window.__closeEvidence = function() {
+    try { originalClose(); } catch (e) { /* ignore */ }
+    // 닫기 핸들러 복원 (다음 팝업을 위해)
+    window.__closeEvidence = originalClose;
+    // 시뮬 재개
+    if (sim.pausedAt) {
+      sim.startTime += performance.now() - sim.pausedAt;
+      sim.pausedAt = 0;
+    }
+    sim.paused = false;
+  };
+}
 
 // =========================================================
 // 제타 스타일 팝업 채팅
