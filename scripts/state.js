@@ -145,32 +145,32 @@ const NIGHT_SCRIPTS = {
     // 장면 2 (0.88 ~ 1.00): 야미가 서점 문 앞까지 이동 + 카메라 야미
     { id: 'd1_s2_yami_move', at: 0.88, type: 'move', npc: '야미',
       to: { x: 8, z: 4 }, // 서점 문(8, 3.5) 근처
-      narration: '야미가 예약해 둔 책을 픽업하러 서점에 가고 있네요.' },
+      narration: '야미가 어디론가 발걸음을 옮기고 있어요.' },
     { id: 'd1_s2_yami_cam',  at: 0.88, type: 'camera', npc: '야미' },
 
-    // 장면 3 (1.00 ~ 1.12): 야미 서점 안으로 깊이 이동 + 혼잣말 (책 집어듦)
+    // 장면 3 (1.00 ~ 1.12): 야미 서점 안으로 깊이 이동 + 혼잣말
     { id: 'd1_s3_yami_enter', at: 1.00, type: 'move', npc: '야미',
       to: { x: 8, z: 6.5 }, // 서점 중심(8,6) 안쪽 ≈ "들어간" 느낌
-      narration: '야미가 서점 안쪽에서 예약 책을 찾기 시작해요.' },
+      narration: '야미가 서점 안쪽으로 들어가네요.' },
     { id: 'd1_s3_yami_bubble', at: 1.02, type: 'bubble', npc: '야미',
       text: '이 책, 드디어 내 손에…', duration: 4 },
 
     // 장면 4 (1.12 ~ 1.24): 카메라 전환 — 차카가 서점 조금 떨어진 곳에서 야경 촬영
     { id: 'd1_s4_chaka_move', at: 1.12, type: 'move', npc: '차카',
       to: { x: 3, z: 2 }, // 광장 북쪽, 서점에서 거리감 있는 위치
-      narration: '차카는 서점에서 조금 떨어진 곳에서 동네 야경을 카메라에 담고 있어요.' },
+      narration: '차카가 동네 어딘가에서 카메라를 들고 있어요.' },
     { id: 'd1_s4_chaka_cam',  at: 1.12, type: 'camera', npc: '차카' },
     { id: 'd1_s4_chaka_bubble', at: 1.14, type: 'bubble', npc: '차카',
       text: '오늘 밤 풍경이 참 이쁘구만.', duration: 4 },
 
-    // 장면 5 (1.24 ~ 1.36): 차카가 셔터를 누르는 순간 — 우연히 서점 쪽 앵글에 야미 담김
+    // 장면 5 (1.24 ~ 1.36): 차카가 셔터를 누르는 순간 — 스포 없이 담백하게
     { id: 'd1_s5_chaka_shutter', at: 1.24, type: 'narration',
-      text: '차카가 셔터를 눌러요. 서점 유리창 너머 실루엣 하나가 함께 담겼어요.' },
+      text: '차카가 한참 동안 셔터를 눌러요.' },
 
-    // 장면 6 (1.36 ~ 1.48): 야미가 서점에서 나와 집으로 + 카메라 야미
+    // 장면 6 (1.36 ~ 1.48): 야미가 집으로 돌아감 + 카메라 야미
     { id: 'd1_s6_yami_home',  at: 1.36, type: 'move', npc: '야미',
       to: { x: 0, z: 0 },
-      narration: '야미가 예약한 책을 픽업해서 집으로 돌아가요.' },
+      narration: '야미가 집으로 돌아가요.' },
     { id: 'd1_s6_yami_cam',   at: 1.36, type: 'camera', npc: '야미' },
 
     // 장면 종료
@@ -385,16 +385,18 @@ function fireScriptEvent(ev) {
   }
 
   // [Wave 2 / 이슈 C] 시뮬레이션 중 NPC 머리 위 말풍선 표시.
-  // gameplay.js 의 sendChatMessage 가 쓰는 것과 동일한 메커니즘:
-  //   - speechBubbleEl.textContent 로 메시지 설정
-  //   - .classList.add('chatting') 로 시각적 강조
+  // [Wave 3 이슈 α] chatBubbleEl (이름표와 분리된 말풍선) 에 적용:
+  //   - chatBubbleEl.textContent 로 메시지 설정
+  //   - .classList.remove('hide') 로 표시
   //   - chatMessage + chatTimer 를 세팅해 지속 시간 후 자동 해제 (scene.js 가 처리)
   if (ev.type === 'bubble' && ev.npc && ev.text) {
     const target = state.npcs.find(n => n.name === ev.npc);
     if (target && npcMeshes[target.id]) {
       const mesh = npcMeshes[target.id];
-      mesh.speechBubbleEl.textContent = `${target.emoji} ${ev.text}`;
-      mesh.speechBubbleEl.classList.add('chatting');
+      if (mesh.chatBubbleEl) {
+        mesh.chatBubbleEl.textContent = ev.text;
+        mesh.chatBubbleEl.classList.remove('hide');
+      }
       mesh.chatMessage = ev.text;
       mesh.chatTimer = ev.duration || 5; // 기본 5초 지속
     }
@@ -412,21 +414,24 @@ function runSimulationTick(dt) {
   
   // 1) 시간 흐름 (3배속)
   state.timeOfDay += dt * 0.015 * sim.speed; // 기본 속도의 3배
-  if (state.timeOfDay >= 1) state.timeOfDay -= 1;
+
+  // [Wave 3 이슈 β] 시뮬레이션 중 timeOfDay 가 1.0 을 넘어 wrap 되면
+  // 새벽/아침 범위(0.15~0.4) 로 떨어져 scene.js 조명이 하늘을 밝게 칠해버림.
+  // → 시뮬 내내 "한밤" 조명 유지하도록 wrap 시 0.0 ~ 0.12 사이로 유지.
+  if (state.timeOfDay >= 1) {
+    state.timeOfDay = state.timeOfDay - 1;
+    // wrap 된 값이 0.12 를 넘으면 강제로 0.10 으로 (한밤 범위)
+    if (state.timeOfDay > 0.12) state.timeOfDay = 0.10;
+  }
   
-  // phase 업데이트
-  const t = state.timeOfDay;
-  if (t < 0.25) state.phase = 'night';
-  else if (t < 0.5) state.phase = 'morning';
-  else if (t < 0.7) state.phase = 'afternoon';
-  else if (t < 0.85) state.phase = 'evening';
-  else state.phase = 'night';
+  // 시뮬레이션 중에는 phase 를 무조건 'night' 로 고정.
+  // NIGHT_SCRIPTS 가 가상 시간으로 1.06~1.48 까지 돌 수 있어서 phase 판정이 꼬이는 것 방지.
+  state.phase = 'night';
   
   // phase 라벨 업데이트
   const phaseLabel = document.getElementById('sim-phase-label');
   if (phaseLabel) {
-    const phaseKor = { night: '🌙 밤', morning: '🌅 아침', afternoon: '☀️ 오후', evening: '🌆 저녁' }[state.phase] || '';
-    phaseLabel.textContent = phaseKor;
+    phaseLabel.textContent = '🌙 밤';
   }
   
   // 2) 스크립트 이벤트 체크
