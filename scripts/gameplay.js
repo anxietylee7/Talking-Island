@@ -1,5 +1,4 @@
 function selectNpc(npcId) {
-  const npc = state.npcs.find(n => n.id == npcId);function selectNpc(npcId) {
   const npc = state.npcs.find(n => n.id == npcId);
   if (!npc) return;
 
