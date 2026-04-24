@@ -2437,3 +2437,25 @@ window.addEventListener('resize', () => {
 // =========================================================
 // 게임 로직
 // =========================================================
+
+// [카테고리 1 신규] 엔진의 moveNpc effect 용 헬퍼.
+// NPC 메시를 지정 좌표로 즉시 순간이동. 애니메이션 없음.
+// id 는 npcMeshes 의 키. 좌표계는 월드 유닛.
+window.__teleportNpc = function (npcId, x, z) {
+  try {
+    const m = npcMeshes[npcId];
+    if (!m || !m.mesh) {
+      console.warn('[scene] teleportNpc: mesh 없음', npcId);
+      return false;
+    }
+    m.mesh.position.set(x, m.mesh.position.y || 0, z);
+    // 다음 자연 이동 목표도 그 자리로 세팅해서 흔들리지 않게
+    if (m.target)    { m.target.x    = x; m.target.z    = z; }
+    if (m.targetPos) { m.targetPos.x = x; m.targetPos.z = z; }
+    console.log('[scene] NPC 순간이동:', npcId, '→', x, z);
+    return true;
+  } catch (err) {
+    console.error('[scene] teleportNpc 에러:', err);
+    return false;
+  }
+};
