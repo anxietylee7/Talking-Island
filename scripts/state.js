@@ -460,6 +460,69 @@ const CUTSCENE_SCRIPTS = {
     // 장면 종료
     { id: 'c1_end', at: 0.58, type: 'end' },
   ],
+
+  // =========================================================
+  // [Tier 2 #11] 독서 모임은 어떻게 될까 — 컷신 승격
+  // =========================================================
+  // 원래는 showEvidencePopup + showStoryModal 두 개로 처리됐지만
+  // (Image 5/6), 사용자 요청으로 NPC 연출 씬으로 재구성.
+  //
+  // 재생 경로:
+  //   yami_retries_bookclub 이벤트 (quest_active 단계 진입 즉시 auto) →
+  //   playCutscene effect → startCutsceneSimulation('yami_at_bookstore').
+  //   이 컷신은 openZetaNpcId 없음 — 끝난 뒤 대화창 자동 오픈 없이 낮 탐색으로 복귀.
+  //   이후 유저가 야미에게 접근하면 yami_seeks_user 이벤트가 발동해
+  //   "...너 잠깐 와볼래?" 선발화 + 퀘스트 생성 (기존 로직).
+  //
+  // 장면 설계 (3-4장면, 간단, 약 24초 @ speed=1, 12초 @ speed=2):
+  //   1) 야미가 서점 앞에 서서 포스터 꺼냄 (나레이션)
+  //   2) 밤톨이 문 열고 나옴
+  //   3) 야미 "사장님, 혹시..." / 밤톨 "지금은 곤란해." (짧은 거절)
+  //   4) 야미가 포스터를 쥐고 어깨 떨구는 나레이션
+  //
+  // 좌표:
+  //   서점 (8, 6), 문 (8, 3.5)
+  //   야미 배치: (8, 2.5) — 문 앞
+  //   밤톨 배치: (8, 3.5) — 문가 (나올 때)
+  yami_at_bookstore: [
+    // 장면 0 (0): NPC 배치 + 카메라. 야미는 먼저 배치, 밤톨은 아직 안 보임.
+    { id: 'c2_s0_show_yami', at: 0, type: 'show', npc: '야미',
+      position: { x: 8, z: 2.5 } },
+    { id: 'c2_s0_cam', at: 0, type: 'camera', npc: '야미' },
+
+    // 장면 1 (0.02~): 야미가 가방에서 포스터를 꺼냄 (나레이션)
+    { id: 'c2_s1_poster', at: 0.02, type: 'narration',
+      text: '야미가 가방에서 포스터 한 장을 꺼내 서점 앞에 섰어요.' },
+
+    // 장면 2 (0.10~): 밤톨이 서점에서 나옴
+    { id: 'c2_s2_show_bamtol', at: 0.10, type: 'show', npc: '밤톨',
+      position: { x: 8, z: 3.5 } },
+    { id: 'c2_s2_narr', at: 0.10, type: 'narration',
+      text: '밤톨이 서점 문을 열고 나와요.' },
+
+    // 장면 3 (0.18~): 야미가 조심스럽게 말 꺼냄
+    { id: 'c2_s3_yami', at: 0.18, type: 'bubble', npc: '야미',
+      text: '사장님, 혹시 이번 주말에 독서 모임 열 수 있을까요?', duration: 5 },
+
+    // 장면 4 (0.28~): 밤톨이 포스터를 보지도 않고 거절
+    { id: 'c2_s4_bamtol', at: 0.28, type: 'bubble', npc: '밤톨',
+      text: '...지금은 곤란해.', duration: 3.5 },
+
+    // 장면 5 (0.35~): 밤톨이 서점 안으로 들어감 (hide — 문 안으로)
+    { id: 'c2_s5_bamtol_in', at: 0.35, type: 'hide', npc: '밤톨',
+      narration: '밤톨이 뒤돌아 서점 안으로 들어가요.' },
+
+    // 장면 6 (0.42~): 야미가 포스터를 쥐고 어깨 떨굼 (나레이션)
+    { id: 'c2_s6_yami_sad', at: 0.42, type: 'narration',
+      text: '포스터가 야미의 손에서 힘없이 구부러졌어요.' },
+
+    // 장면 7 (0.48~): 장면 종료. 야미는 여기 남음 (hide 안 함) — 이후 유저 접근 시
+    //                 yami_seeks_user 가 발동하도록 야미 mesh 가 (8, 2.5) 에 계속 보임.
+    //                 단, 야미는 이후 "나 좀 도와줘" 말풍선을 달고 다녀야 함 (#12).
+    //                 그 플래그 세팅은 scenarioEngine 에서 하는 게 아니라
+    //                 cutscene followUp effects 로 처리 (아래 showHelpBubble effect).
+    { id: 'c2_end', at: 0.48, type: 'end' },
+  ],
 };
 
 function showNotification(msg) {
@@ -1750,10 +1813,11 @@ window.__zetaSend = async function() {
   history.push({ role: 'user', text });
   state.chatHistory[npcId] = history;
   
-  // 타이핑 인디케이터
+  // [Tier 2 #4] 타이핑 점 세 개 → 스피너(돌아가는 원) 로 교체.
+  //   사용자 요청: "생각 중" 느낌을 점보다 더 명확히. 스피너 + 작은 텍스트.
   const typing = document.createElement('div');
-  typing.className = 'zeta-typing';
-  typing.innerHTML = '<span></span><span></span><span></span>';
+  typing.className = 'zeta-spinner';
+  typing.innerHTML = '<div class="zeta-spinner-ring"></div><div class="zeta-spinner-text">생각 중…</div>';
   messagesEl.appendChild(typing);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   
