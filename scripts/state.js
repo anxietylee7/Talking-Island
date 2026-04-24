@@ -15,7 +15,7 @@ const state = {
   rumors: [],
   reports: [],
   quests: [],
-  activeTab: 'chat',
+  activeTab: 'report',
   activeQuestId: null,
   loading: false,
   viewMode: 'village',
@@ -485,43 +485,50 @@ const CUTSCENE_SCRIPTS = {
   //   야미 배치: (8, 2.5) — 문 앞
   //   밤톨 배치: (8, 3.5) — 문가 (나올 때)
   yami_at_bookstore: [
-    // 장면 0 (0): NPC 배치 + 카메라. 야미는 먼저 배치, 밤톨은 아직 안 보임.
+    // [피드백] 타이밍 재조정:
+    //   이전: at 0.02 에 narration → 페이드 인 전에 뜸. 화면-대사 빗나감.
+    //         show 와 narration 이 같은 at 에 붙어 순간 텔레포트 + 해설 동시 발생.
+    //   수정: 페이드 뒤 1.5초 이상 여유. show 이벤트와 narration 을 별도 프레임으로.
+    //   속도: sim.speed=2 기준 총 약 20초.
+
+    // 장면 0 (0): 야미 등장 + 카메라 고정. 페이드 인 시작.
     { id: 'c2_s0_show_yami', at: 0, type: 'show', npc: '야미',
       position: { x: 8, z: 2.5 } },
     { id: 'c2_s0_cam', at: 0, type: 'camera', npc: '야미' },
 
-    // 장면 1 (0.02~): 야미가 가방에서 포스터를 꺼냄 (나레이션)
-    { id: 'c2_s1_poster', at: 0.02, type: 'narration',
+    // 장면 1 (0.05~, 약 1.67초): 야미가 포스터 꺼냄. 페이드 끝난 뒤 충분히 뜸 두고 나레이션.
+    { id: 'c2_s1_poster', at: 0.05, type: 'narration',
       text: '야미가 가방에서 포스터 한 장을 꺼내 서점 앞에 섰어요.' },
 
-    // 장면 2 (0.10~): 밤톨이 서점에서 나옴
-    { id: 'c2_s2_show_bamtol', at: 0.10, type: 'show', npc: '밤톨',
-      position: { x: 8, z: 3.5 } },
-    { id: 'c2_s2_narr', at: 0.10, type: 'narration',
-      text: '밤톨이 서점 문을 열고 나와요.' },
+    // 장면 2a (0.15~, 약 5초): 서점 문이 열림 — 먼저 나레이션으로 문 열리는 순간 알림.
+    { id: 'c2_s2a_door_opens', at: 0.15, type: 'narration',
+      text: '잠시 후, 서점 문이 열려요.' },
 
-    // 장면 3 (0.18~): 야미가 조심스럽게 말 꺼냄
-    { id: 'c2_s3_yami', at: 0.18, type: 'bubble', npc: '야미',
+    // 장면 2b (0.17~, 약 5.67초): 밤톨 등장. narration 약간 뒤에 show — 순간 텔레포트 느낌 완화.
+    { id: 'c2_s2b_show_bamtol', at: 0.17, type: 'show', npc: '밤톨',
+      position: { x: 8, z: 3.5 } },
+
+    // 장면 3 (0.22~, 약 7.3초): 야미가 조심스럽게 말 꺼냄.
+    { id: 'c2_s3_yami', at: 0.22, type: 'bubble', npc: '야미',
       text: '사장님, 혹시 이번 주말에 독서 모임 열 수 있을까요?', duration: 5 },
 
-    // 장면 4 (0.28~): 밤톨이 포스터를 보지도 않고 거절
-    { id: 'c2_s4_bamtol', at: 0.28, type: 'bubble', npc: '밤톨',
+    // 장면 4 (0.32~, 약 10.7초): 밤톨이 포스터를 보지도 않고 거절.
+    { id: 'c2_s4_bamtol', at: 0.32, type: 'bubble', npc: '밤톨',
       text: '...지금은 곤란해.', duration: 3.5 },
 
-    // 장면 5 (0.35~): 밤톨이 서점 안으로 들어감 (hide — 문 안으로)
-    { id: 'c2_s5_bamtol_in', at: 0.35, type: 'hide', npc: '밤톨',
-      narration: '밤톨이 뒤돌아 서점 안으로 들어가요.' },
+    // 장면 5a (0.42~, 약 14초): 밤톨이 돌아서는 순간 나레이션.
+    { id: 'c2_s5a_turn', at: 0.42, type: 'narration',
+      text: '밤톨이 뒤돌아 서점 안으로 들어가요.' },
 
-    // 장면 6 (0.42~): 야미가 포스터를 쥐고 어깨 떨굼 (나레이션)
-    { id: 'c2_s6_yami_sad', at: 0.42, type: 'narration',
+    // 장면 5b (0.44~, 약 14.7초): 실제 hide — narration 보다 살짝 뒤에 실행.
+    { id: 'c2_s5b_hide', at: 0.44, type: 'hide', npc: '밤톨' },
+
+    // 장면 6 (0.52~, 약 17.3초): 야미의 여운.
+    { id: 'c2_s6_yami_sad', at: 0.52, type: 'narration',
       text: '포스터가 야미의 손에서 힘없이 구부러졌어요.' },
 
-    // 장면 7 (0.48~): 장면 종료. 야미는 여기 남음 (hide 안 함) — 이후 유저 접근 시
-    //                 yami_seeks_user 가 발동하도록 야미 mesh 가 (8, 2.5) 에 계속 보임.
-    //                 단, 야미는 이후 "나 좀 도와줘" 말풍선을 달고 다녀야 함 (#12).
-    //                 그 플래그 세팅은 scenarioEngine 에서 하는 게 아니라
-    //                 cutscene followUp effects 로 처리 (아래 showHelpBubble effect).
-    { id: 'c2_end', at: 0.48, type: 'end' },
+    // 장면 종료
+    { id: 'c2_end', at: 0.60, type: 'end' },
   ],
 };
 
