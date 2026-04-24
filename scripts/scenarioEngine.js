@@ -658,6 +658,14 @@
     const next = _uiQueue.items.shift();
     if (!next) {
       _uiQueue.current = null;
+      // [시뮬 A 신규] 큐가 모두 비워지면 등록된 drain 콜백 실행 (있다면).
+      //   onUiQueueDrain 으로 외부에서 등록. 컷신 시작 전에 UI 큐 비워지길 기다리는 용도.
+      //   한 번만 호출되도록 콜백 참조 소거.
+      if (_uiQueue.afterComplete) {
+        const cb = _uiQueue.afterComplete;
+        _uiQueue.afterComplete = null;
+        try { cb(); } catch (e) { console.error('[engine][ui-queue] drain 콜백 오류:', e); }
+      }
       return;
     }
     _uiQueue.current = next;
@@ -767,9 +775,38 @@
     const log = [];
     if (!Array.isArray(effects)) return log;
 
-    for (const fx of effects) {
+    // [시뮬 A 수정] for...of → 인덱스 기반 for 로 변경.
+    //   이유: playCutscene effect 를 만나면 루프를 중단하고 "그 뒤의 effects" 를
+    //         followUp 으로 수집해 startCutsceneSimulation 에 넘겨야 한다.
+    //         for...of 는 인덱스를 모르니 slice 못 함.
+    for (let i = 0; i < effects.length; i++) {
+      const fx = effects[i];
       try {
         switch (fx.type) {
+
+          // [시뮬 A 신규] 컷신 재생.
+          //   이 effect 를 만나면:
+          //     1) 뒤이어 오는 effects 는 모두 followUp 으로 수집 (컷신 후 실행)
+          //     2) startCutsceneSimulation 호출 → UI 큐 비워지면 실제 재생 시작
+          //     3) 루프 즉시 break (이 함수 호출부 입장에선 "남은 effects 는 지연 실행"
+          //        이지만 함수 자체는 동기적으로 리턴)
+          case 'playCutscene': {
+            const followUp = effects.slice(i + 1);
+            if (typeof startCutsceneSimulation === 'function') {
+              startCutsceneSimulation(fx.cutsceneId, followUp, fx.openZetaNpcId || null);
+              log.push({
+                type: fx.type, cutsceneId: fx.cutsceneId,
+                followUpCount: followUp.length, status: 'started'
+              });
+            } else {
+              console.warn('[engine][effect] playCutscene: startCutsceneSimulation 미정의');
+              log.push({ type: fx.type, status: 'skipped_no_func' });
+              // fallback: followUp 을 지금 실행 (평범 effects 처리 흐름 계속)
+              continue;
+            }
+            // 루프 종료 — 뒤 effects 는 컷신 뒤에 실행됨.
+            return log;
+          }
 
           case 'showEvidencePopup':
             // [6단계 변경] 직접 호출 대신 큐에 넣음 (동시 발동 시 순차 표시 보장).
@@ -1060,11 +1097,23 @@
               // flags 에도 기록 (나중에 분석/디버그용)
               engineState.flags[branchKey + '_selected'] = chosen.key;
 
-              // 선택된 branch 의 effects 를 재귀 실행
-              if (Array.isArray(chosen.effects)) {
-                _applyEffects(chosen.effects, {
-                  source: 'ending:' + branchKey + ':' + chosen.key
-                });
+              // [시뮬 C 수정] 선택된 branch 의 effects 를 즉시 실행하지 않고,
+              //   startEndingSimulation 에 전달 → 시뮬 재생이 끝난 뒤
+              //   runEndingPostEffects 가 실행하도록 한다.
+              //   이유: effects 안에 showStoryModal 이 있으면 시뮬 시작 전에
+              //        모달이 떠서 연출 흐름을 깨뜨림. 또한 showEvidencePopup 은
+              //        이미 bookstore.js 에서 제거되어 시뮬 안 evidence 이벤트로
+              //        재생됨. 여기서는 changeAffinity 등 비시각 effects 만 남음.
+              if (typeof startEndingSimulation === 'function') {
+                startEndingSimulation(chosen.key, chosen.effects || []);
+              } else {
+                // fallback: 시뮬 함수가 없으면 (로드 순서 등 예외) 기존 동작 유지
+                console.warn('[engine][effect] ending: startEndingSimulation 미정의, 즉시 실행 fallback');
+                if (Array.isArray(chosen.effects)) {
+                  _applyEffects(chosen.effects, {
+                    source: 'ending:' + branchKey + ':' + chosen.key
+                  });
+                }
               }
               log.push({
                 type: fx.type, branchKey: branchKey,
@@ -1462,6 +1511,42 @@
     getDialogueContext:        getDialogueContext,
     evaluateQuestMilestones:   evaluateQuestMilestones,  // [9단계]
     getCurrentBannerText:      getCurrentBannerText,     // [9단계]
+
+    // [시뮬 C 신규] 엔딩 시뮬 종료 후 state.js 의 runEndingPostEffects 가 호출.
+    //   전달된 effects 배열(changeAffinity 등) 을 _applyEffects 로 실행.
+    //   showStoryModal/showEvidencePopup 은 bookstore.js 에서 미리 제거되어 없어야 함.
+    applyEndingPostEffects: function (effects) {
+      if (!Array.isArray(effects) || effects.length === 0) return [];
+      return _applyEffects(effects, { source: 'ending_post_effects' });
+    },
+
+    // [시뮬 A 신규] UI 큐가 비워지면 (current=null && pending 비어있음) 한 번만 호출될 콜백 등록.
+    //   컷신 시작 전에 evidence 팝업이 닫히길 기다리는 용도.
+    //   이미 큐가 비어있으면 즉시 콜백 실행.
+    onUiQueueDrain: function (callback) {
+      if (typeof callback !== 'function') return;
+      if (!_uiQueue.current && _uiQueue.items.length === 0) {
+        // 이미 비어있음 — 즉시 호출
+        try { callback(); } catch (e) { console.error('[engine] onUiQueueDrain 콜백 오류:', e); }
+        return;
+      }
+      // 이전 콜백이 있었다면 그것도 실행 보장하기 위해 체인 (통상은 하나만 있을 것)
+      const prev = _uiQueue.afterComplete;
+      _uiQueue.afterComplete = function () {
+        if (prev) { try { prev(); } catch (e) { /* ignore */ } }
+        try { callback(); } catch (e) { console.error('[engine] onUiQueueDrain 콜백 오류:', e); }
+      };
+    },
+
+    // [시뮬 A 신규] 컷신 시뮬 종료 후 state.js 의 runCutscenePostEffects 가 호출.
+    //   followUp effects 를 _applyEffects 로 실행.
+    //   현재 bookstore.js chaka_shows_night_photo 의 followUp 에는
+    //   addRumor / changeAffinity / injectNpcContext / npcSpeaksFirst 만 있고
+    //   시각적 팝업은 없음 (evidence 는 컷신 전에 이미 실행됨).
+    applyCutsceneFollowUp: function (effects) {
+      if (!Array.isArray(effects) || effects.length === 0) return [];
+      return _applyEffects(effects, { source: 'cutscene_followup' });
+    },
   };
 
 
