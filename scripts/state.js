@@ -917,7 +917,11 @@ window.__zetaSend = async function() {
     
     // history를 OpenAI messages 배열로 변환
     // user는 그대로, npc는 assistant로 매핑
-    const messagesArr = history.slice(-6).map(m => ({
+    // [피드백 2번 수정] 최근 대화 윈도우 6턴 → 12턴.
+    // 이유: "얌쿤이라고 부를게" 같은 유저 선언이 6턴 밖으로 밀리면 AI가 바로 잊음.
+    // MEM_HISTORY_THRESHOLD(20)까지는 요약이 생성되지 않으므로 중간 구간(7~20턴)이 블랙홀이었음.
+    // 12턴으로 늘려 이 구간을 커버. 임계치는 그대로 유지해 AI 호출 비용은 안 늘어남.
+    const messagesArr = history.slice(-12).map(m => ({
       role: m.role === 'user' ? 'user' : 'assistant',
       content: m.text,
     }));
