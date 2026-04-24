@@ -584,54 +584,26 @@ function renderContent() {
     if (cm) cm.scrollTop = cm.scrollHeight;
   }
   else if (state.activeTab === 'report') {
+    // [피드백 A1] 소식탭 원복 — 신문 스타일은 팝업 전용으로 분리.
+    //   탭은 전체 리포트를 간단한 리스트로 훑어보는 용도.
+    //   신문 스타일 팝업은 새 날 아침 진입 시에만 자동으로 뜬다 (morning-report-modal).
     const today = state.reports.filter(r => r.day === state.day);
     const older = state.reports.filter(r => r.day < state.day).slice(-10).reverse();
-    // [Tier 2 #3] 신문 톤 렌더링 — 제호(마스트헤드) + 헤드라인 + 본문 카드 형식.
-    //   기존 데이터 (text 한 줄) 유지하되 표현만 신문 느낌으로.
-    //   각 리포트의 text 를 큰 헤드라인으로, NPC 이름/직업을 기자/주체로 표시.
-    //   이전 날짜 리포트는 접이식 "지난 호" 아카이브.
-    const headline = today.length > 0 ? today[0].text : '';
     el.innerHTML = `
-      <div class="news-paper">
-        <div class="news-masthead">
-          <div class="news-masthead-title">동네 소식</div>
-          <div class="news-masthead-date">Day ${state.day} · 아침판</div>
-        </div>
-        ${today.length === 0 ? `
-          <div class="empty-state">
-            <span class="big-emoji">☀️</span>
-            아직 오늘자 소식이 없어요.<br>
-            "밤으로" 버튼을 눌러 다음 날을 시작해보세요.
-          </div>
-        ` : `
-          <div class="news-lead">
-            <div class="news-lead-kicker">오늘의 헤드</div>
-            <div class="news-lead-headline">${escapeHtml(headline)}</div>
-          </div>
-          <div class="news-articles">
-            ${today.slice(1).map(r => {
-              const npc = r.npcId ? state.npcs.find(n => n.id === r.npcId) : null;
-              return `<article class="news-article">
-                <div class="news-article-head">
-                  <span class="news-article-byline">${npc?.emoji || '📜'} ${npc?.name || '동네'}</span>
-                </div>
-                <div class="news-article-body">${escapeHtml(r.text)}</div>
-              </article>`;
-            }).join('')}
-          </div>
-        `}
-      </div>
+      <div class="section-title">📜 아침 리포트 · Day ${state.day}</div>
+      ${today.length === 0 ? '<div class="empty-state"><span class="big-emoji">☀️</span>아직 리포트가 없어요.<br>집에 들어가서 침대에 눕으면 다음 날이 시작돼요.</div>' :
+        today.map(r => {
+          const npc = r.npcId ? state.npcs.find(n => n.id === r.npcId) : null;
+          return `<div class="report-item"><div>${npc?.emoji || '📜'}</div><div>${escapeHtml(r.text)}</div></div>`;
+        }).join('')
+      }
       ${older.length > 0 ? `
-        <details class="news-archive">
-          <summary>📰 지난 호 보기</summary>
-          <div class="news-archive-list">
+        <details style="margin-top:12px">
+          <summary style="cursor:pointer; font-size:11px; color:#9c7a5a">이전 리포트 보기</summary>
+          <div style="margin-top:6px">
             ${older.map(r => {
               const npc = r.npcId ? state.npcs.find(n => n.id === r.npcId) : null;
-              return `<div class="news-archive-item">
-                <span class="news-archive-day">Day ${r.day}</span>
-                <span class="news-archive-emoji">${npc?.emoji || '📜'}</span>
-                <span class="news-archive-text">${escapeHtml(r.text)}</span>
-              </div>`;
+              return `<div class="report-item" style="opacity:0.7; font-size:11px"><div>${npc?.emoji || '📜'}</div><div><span style="color:#9c7a5a">Day ${r.day}:</span> ${escapeHtml(r.text)}</div></div>`;
             }).join('')}
           </div>
         </details>
