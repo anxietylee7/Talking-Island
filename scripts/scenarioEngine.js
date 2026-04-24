@@ -934,6 +934,17 @@
             }
             break;
 
+          // [피드백 #중간분기] 알림 띄움. autoOnStageEnter 이벤트에서 "상황 전환" 알림용.
+          case 'showNotification':
+            if (fx.text && typeof showNotification === 'function') {
+              try { showNotification(fx.text); }
+              catch (e) { console.warn('[engine][effect] showNotification 실패', e); }
+              log.push({ type: fx.type, status: 'ok' });
+            } else {
+              log.push({ type: fx.type, status: 'invalid_or_no_func' });
+            }
+            break;
+
           case 'triggerQuest':
             // [6단계 구현] 시나리오의 quests[questId] 정의를 읽어 state.quests 에 추가.
             // 야미의 현재 호감도를 보고 branches 중 적절한 것을 선택한다.
