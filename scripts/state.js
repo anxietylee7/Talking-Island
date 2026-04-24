@@ -548,6 +548,122 @@ window.__closeStoryModal = function() {
   document.getElementById('story-modal').classList.remove('show');
 };
 
+// [피드백 A2] 아침 소식 전용 신문 스타일 모달.
+//   기존 showStoryModal 은 단순 제목+본문. 이 함수는 신문 제호 + 헤드라인 + 기사 카드 형식.
+//   reports: [{ line, primaryNpcId }] 배열. bodyIntro 는 맨 위 소제목.
+//   닫기 버튼: 기존 story-modal 구조를 재사용하되 body 에 HTML 을 직접 주입한다.
+//
+//   레이아웃:
+//   ┌─────────────────────────────────┐
+//   │        동네 소식                │
+//   │        Day N · 아침판           │
+//   ├─────────────────────────────────┤
+//   │ [오늘의 헤드]                   │
+//   │ 첫 번째 리포트                  │
+//   ├─────────────────────────────────┤
+//   │ 📸 차카: 두 번째 리포트         │
+//   │ 📚 밤톨: 세 번째 리포트         │
+//   └─────────────────────────────────┘
+function showNewsModal(title, bodyIntro, reports) {
+  // escape 유틸 (state.js 내부엔 없어서 인라인 구현 — gameplay.js 의 것과 동일 로직).
+  const esc = function (s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
+
+  const safeReports = Array.isArray(reports) ? reports : [];
+  const headline = safeReports.length > 0 ? (safeReports[0].line || '') : '';
+  const rest = safeReports.slice(1);
+
+  // NPC 이름/이모지 조회 (state.npcs 에서)
+  const getNpc = function (npcId) {
+    if (!npcId || !Array.isArray(state.npcs)) return null;
+    return state.npcs.find(function (n) { return n.id === npcId; });
+  };
+
+  const html =
+    '<div class="news-paper news-paper--modal">' +
+      '<div class="news-masthead">' +
+        '<div class="news-masthead-title">동네 소식</div>' +
+        '<div class="news-masthead-date">' + esc(title.replace(/[🌅🌄]/g, '').trim()) + '</div>' +
+      '</div>' +
+      (bodyIntro ? '<div class="news-intro">' + esc(bodyIntro) + '</div>' : '') +
+      (safeReports.length === 0
+        ? '<div class="news-empty">(특별한 소식은 없었어요.)</div>'
+        : '<div class="news-lead">' +
+            '<div class="news-lead-kicker">오늘의 헤드</div>' +
+            '<div class="news-lead-headline">' + esc(headline) + '</div>' +
+          '</div>' +
+          (rest.length > 0
+            ? '<div class="news-articles">' +
+                rest.map(function (r) {
+                  const npc = getNpc(r.primaryNpcId);
+                  const byline = npc ? (npc.emoji || '📜') + ' ' + npc.name : '📜 동네';
+                  return '<article class="news-article">' +
+                    '<div class="news-article-head">' +
+                      '<span class="news-article-byline">' + esc(byline) + '</span>' +
+                    '</div>' +
+                    '<div class="news-article-body">' + esc(r.line || '(내용 없음)') + '</div>' +
+                  '</article>';
+                }).join('') +
+              '</div>'
+            : '')
+      ) +
+    '</div>';
+
+  document.getElementById('story-modal-title').textContent = title;
+  const bodyEl = document.getElementById('story-modal-body');
+  bodyEl.innerHTML = html;
+  // 기본 story-modal body 는 white-space: pre-line 이라 HTML 안에서 개행 쌓일 수 있음.
+  // 신문 뷰는 자체 레이아웃이므로 pre-line 해제.
+  bodyEl.style.whiteSpace = 'normal';
+  document.getElementById('story-modal').classList.add('show');
+}
+window.__showNewsModal = showNewsModal;
+
+// [피드백 B1] 엔딩 예고 모달 — 단일 "확인" 버튼, 누르면 onConfirm 콜백 실행.
+//   showConfirmModal 은 예/아니오 두 버튼 구조라 단일 알림엔 부적합.
+//   showStoryModal 은 콜백 없음.
+//   이 함수는 둘 사이의 틈을 메움: 단일 버튼 + 콜백.
+function showEndingPreviewModal(title, body, onConfirm) {
+  // 기존 모달 정리
+  const existing = document.getElementById('ending-preview-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'ending-preview-modal';
+  modal.style.cssText =
+    'position: fixed; inset: 0; z-index: 650;' +
+    'background: rgba(0,0,0,0.45); backdrop-filter: blur(6px);' +
+    'display: flex; align-items: center; justify-content: center; padding: 20px;';
+  modal.innerHTML =
+    '<div style="background: white; border-radius: 24px; padding: 28px 24px; max-width: 440px; width: 100%; ' +
+         'box-shadow: 0 20px 60px rgba(0,0,0,0.25); border: 3px solid #ffeef2;">' +
+      '<h2 style="margin: 0 0 14px; font-size: 19px; color: #3a2a1a;">' +
+        String(title || '').replace(/</g, '&lt;') +
+      '</h2>' +
+      '<p style="margin: 0 0 22px; line-height: 1.65; color: #555; white-space: pre-line; font-size: 14px;">' +
+        String(body || '').replace(/</g, '&lt;') +
+      '</p>' +
+      '<div style="display: flex; justify-content: flex-end;">' +
+        '<button id="ending-preview-ok" style="padding: 10px 28px; border: none; ' +
+          'background: linear-gradient(135deg, #ffa76b 0%, #ff7a9c 100%); color: white; ' +
+          'border-radius: 999px; cursor: pointer; font-size: 14px; font-weight: 700;">확인</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  const btn = document.getElementById('ending-preview-ok');
+  btn.addEventListener('click', function () {
+    modal.remove();
+    if (typeof onConfirm === 'function') {
+      try { onConfirm(); } catch (err) { console.error('[ending preview] onConfirm 오류:', err); }
+    }
+  });
+}
+window.showEndingPreviewModal = showEndingPreviewModal;
+
 // =========================================================
 // 확인 모달 (예/아니오 선택)
 // =========================================================
@@ -606,6 +722,37 @@ function handleBedClick() {
   );
 }
 
+// [피드백 C1] 시뮬 중 비참여 NPC 를 화면에서 숨기는 유틸.
+//   시뮬 스크립트 events 배열을 받아 거기 등장하는 NPC name 들을 수집 (show/move/hide/bubble).
+//   그 외 NPC 는 mesh.visible = false + 말풍선 hide + scriptedTarget 해제.
+//   시뮬이 끝나면 endSimulation 안전망이 homeLocation 으로 복원하면서 자동 재표시.
+//
+//   왜 필요한가:
+//     스크린샷 3 — 시뮬 A (차카-밤톨 사진관 앞 대화) 중 야미가 근처에 뜬금없이 있음.
+//     시뮬이 NPC 스케줄러를 정지시키긴 하지만, 이미 밖에 나와있던 NPC 는 그대로 visible.
+//     연출상 등장하지 않는 NPC 는 시뮬 동안 잠시 숨기는 게 자연스러움.
+function hideNonParticipatingNpcs(scriptEvents) {
+  if (!Array.isArray(scriptEvents)) return;
+  // 참여자 수집
+  const participants = new Set();
+  for (const ev of scriptEvents) {
+    if (ev && ev.npc) participants.add(ev.npc);
+  }
+  // 참여 안 하는 NPC 처리
+  (state.npcs || []).forEach(function (npc) {
+    if (!npc || participants.has(npc.name)) return;
+    const m = npcMeshes[npc.id];
+    if (!m) return;
+    // 원상 복원 정보는 endSimulation 안전망이 location 기반으로 처리.
+    // 여기서는 시뮬 동안만 hide. location 은 그대로 두되 표시만 끈다.
+    m.mesh.visible = false;
+    if (m.speechBubbleEl) m.speechBubbleEl.classList.add('hide');
+    if (m.chatBubbleEl) m.chatBubbleEl.classList.add('hide');
+    m.scriptedTarget = null;
+    m.state = 'idle';
+  });
+}
+
 // 플레이스홀더: 3단계에서 본격 구현 예정
 function startSleepSequence() {
   // 침대에서 자기 시작 → 화면 어두워지고 → NPC 시뮬레이션 시작
@@ -648,6 +795,10 @@ function startSleepSequence() {
     // [Tier 1 #1] 사용자 피드백 — 모든 시뮬 2배속. Day 1/2 는 speed=2, 그 외(사용하지 않지만)는 3.
     //             장면당 8초 설계 → 2배속으로 장면당 4초가 됨.
     sim.speed = (state.day === 1 || state.day === 2) ? 2 : 3;
+
+    // [피드백 C1] 이 밤 스크립트에 등장하지 않는 NPC 는 시뮬 동안 hide.
+    //   다른 NPC 가 랜덤으로 마을 어딘가에 있어서 연출 프레임에 들어오는 것 방지.
+    hideNonParticipatingNpcs(NIGHT_SCRIPTS[state.day] || []);
     
     // 3) 현재 시각을 "저녁 시작"으로 맞춤 (0.75 부근부터 스크립트 진행)
     state.timeOfDay = 0.74;
@@ -717,6 +868,9 @@ function startEndingSimulation(branchKey, pendingEffects) {
     sim.speed = 2;
     sim.paused = false;
     sim.pausedAt = 0;
+
+    // [피드백 C1] 이 엔딩 스크립트에 등장하지 않는 NPC 는 시뮬 동안 hide.
+    hideNonParticipatingNpcs(ENDING_SCRIPTS[branchKey] || []);
 
     // 카메라 초기 위치 — 서점 근처로 살짝 미리 당겨놓음.
     cameraAngle = Math.PI / 4;
@@ -849,6 +1003,10 @@ function _startCutsceneCore(cutsceneId) {
     // (selectNpc 등 외부 호출부는 sim.active 로 차단됨)
     state.cutscenePending = false;
 
+    // [피드백 C1] 이 컷신 스크립트에 등장하지 않는 NPC 는 시뮬 동안 hide.
+    //   스크린샷 3 이슈 — 시뮬 A 중 야미가 근처에 떠서 연출 깨짐.
+    hideNonParticipatingNpcs(CUTSCENE_SCRIPTS[cutsceneId] || []);
+
     // 카메라 초기 위치 — 사진관(-8, -6) 근처로 미리 당겨놓음.
     // CUTSCENE_SCRIPTS 의 S0 camera 이벤트가 첫 프레임에 발동하면서 차카 타겟이 설정됨.
     cameraAngle = Math.PI / 4;
@@ -956,6 +1114,40 @@ function fireScriptEvent(ev) {
     if (target) {
       const mesh = npcMeshes[target.id];
       if (mesh) {
+        // [피드백 #차카안보임] NPC 가 인테리어 안(currentScene='interior') 이거나
+        //   homeLocation 에 있으면 (npc.location != 'outside') mesh.visible=false 상태.
+        //   이 상태에서 move 만 주면 NPC 는 visible 안 됨 — "카메라는 따라가는데 캐릭터 없음".
+        //   → move 이벤트는 암묵적 show 를 내포해야 함. 외부 씬으로 끌어내고 visible=true.
+        //   show 이벤트가 별도로 있으면 그게 먼저 처리되어 이 블록은 no-op.
+        if (mesh.currentScene === 'interior' || !mesh.mesh.visible) {
+          // interiorScene 에 있으면 outside 씬으로 옮김.
+          if (mesh.currentScene === 'interior') {
+            if (typeof interiorScene !== 'undefined' && typeof scene !== 'undefined') {
+              try {
+                interiorScene.remove(mesh.mesh);
+                scene.add(mesh.mesh);
+              } catch (e) { /* 이미 scene 에 있을 수도 — 무시 */ }
+            }
+            mesh.currentScene = 'outside';
+          }
+          // 인테리어 좌표가 외부 씬에 그대로 대입되면 뜬금없는 위치에 뜸.
+          // → homeLocation 의 문 좌표로 먼저 텔레포트. (door 정보 없으면 건물 중심.)
+          if (target.homeLocation && target.homeLocation !== 'outside') {
+            const homeLoc = (typeof LOCATIONS !== 'undefined')
+              ? LOCATIONS.find(l => l.interior === target.homeLocation)
+              : null;
+            if (homeLoc) {
+              const spawnX = homeLoc.door ? homeLoc.door.x : homeLoc.x;
+              const spawnZ = homeLoc.door ? homeLoc.door.z : homeLoc.z;
+              mesh.mesh.position.set(spawnX, 0, spawnZ);
+            }
+          }
+          mesh.mesh.visible = true;
+          if (mesh.speechBubbleEl) mesh.speechBubbleEl.classList.remove('hide');
+          target.location = 'outside';
+          mesh.buildingState = 'wandering';
+        }
+
         mesh.scriptedTarget = new THREE.Vector3(ev.to.x, 0, ev.to.z);
         mesh.state = 'walking';
       }
@@ -968,15 +1160,26 @@ function fireScriptEvent(ev) {
     //   저장값은 예약어 '__user__' — cinematicTarget 추적 로직이 이걸 보면
     //   npcMeshes 가 아니라 state.user.mesh 를 따라간다.
     // 기존: ev.npc 에 NPC 이름을 받음. 호환 유지.
+    // [피드백 엔딩카메라 진단] 왜 e_low_s6_cam 이 야미를 안 따라가는지 파악용.
+    //   실제로 cinematicTarget 이 무엇으로 세팅되는지, 대상 mesh 가 있는지 로깅.
     if (state.simulation.cameraMode === 'cinematic') {
       if (ev.target === 'user') {
         state.simulation.cinematicTarget = '__user__';
+        console.log('[cam] set target: __user__ (event=' + ev.id + ')');
       } else if (ev.npc) {
         const target = state.npcs.find(n => n.name === ev.npc);
         if (target) {
           state.simulation.cinematicTarget = target.id;
+          const m = npcMeshes[target.id];
+          console.log('[cam] set target: ' + target.id + ' (name=' + ev.npc + ', event=' + ev.id +
+            ', meshExists=' + !!m + ', visible=' + (m ? m.mesh.visible : 'n/a') +
+            ', pos=' + (m ? ('(' + m.mesh.position.x.toFixed(1) + ',' + m.mesh.position.z.toFixed(1) + ')') : 'n/a') + ')');
+        } else {
+          console.warn('[cam] NPC name not found in state.npcs:', ev.npc);
         }
       }
+    } else {
+      console.log('[cam] cameraMode is not cinematic, event=' + ev.id + ' skipped');
     }
     if (ev.label) {
       // 상단 라벨은 이벤트 라벨로 덮어씌우되 앞에 ★ 표시
