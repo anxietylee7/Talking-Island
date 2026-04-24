@@ -79,15 +79,25 @@ const BOOKSTORE_STORY = {
 
 const LOCATIONS = [
   { name: '광장', x: 0, z: 0, color: 0xfff0cc, emoji: '⛲' },
-  { name: '사진관', x: -8, z: -6, color: 0xffd6cc, emoji: '📸', interior: 'photostudio',
+  // [Tier 3 #6] 건물 파스텔 5색 팔레트
+  //   서점=크림, 카페=연붉은, 꽃가게=연보라, 사진관=멜론/올리브, 우리집=복숭아
+  //   (도서관은 이 동네에 없으므로 도서관 배정색은 유저 집에 적용)
+  // [Tier 3 #5] signText — 건물 지붕 위에 떠 있는 3D 간판의 텍스트.
+  //   scene.js 의 건물 생성 루프에서 이 필드가 있으면 CanvasTexture 기반 sprite 로
+  //   지붕 위에 간판 mesh 를 붙임. 유저 집은 생략 (loc.userOnly).
+  { name: '사진관', x: -8, z: -6, color: 0xd8e4b0, emoji: '📸', interior: 'photostudio',
+    signText: '사진관',
     door: { x: -8, z: -3.5 } },
-  { name: '카페', x: 7, z: -5, color: 0xd4a5f5, emoji: '☕', interior: 'cafe',
+  { name: '카페', x: 7, z: -5, color: 0xf9c8d0, emoji: '☕', interior: 'cafe',
+    signText: '카페',
     door: { x: 7, z: -2.5 } },
-  { name: '꽃가게', x: -7, z: 7, color: 0xfad4d8, emoji: '🌸', interior: 'flower',
+  { name: '꽃가게', x: -7, z: 7, color: 0xd5c9f0, emoji: '🌸', interior: 'flower',
+    signText: '꽃가게',
     door: { x: -7, z: 4.5 } },
-  { name: '서점', x: 8, z: 6, color: 0xc9dcf5, emoji: '📚', interior: 'bookstore',
+  { name: '서점', x: 8, z: 6, color: 0xfff4d6, emoji: '📚', interior: 'bookstore',
+    signText: '서점',
     door: { x: 8, z: 3.5 } },
   { name: '연못', x: 0, z: 9, color: 0xa8d0dc, emoji: '🪷' },
-  { name: '우리집', x: 0, z: -11, color: 0xfff5e1, emoji: '🏠', interior: 'home', userOnly: true,
+  { name: '우리집', x: 0, z: -11, color: 0xfcd4b8, emoji: '🏠', interior: 'home', userOnly: true,
     door: { x: 0, z: -8.5 } },
 ];
