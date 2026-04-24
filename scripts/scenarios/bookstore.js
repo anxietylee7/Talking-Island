@@ -361,6 +361,22 @@ window.BOOKSTORE_SCENARIO = {
     // 마일스톤 시스템은 유지 (대화 풀이가 핵심), 엔딩 분기만 밤톨 호감도 기준.
     quest_active: [
       {
+        // [피드백 A3] Day 3 아침에도 소식 팝업.
+        //   engineState.lastNightReports 는 Day 2 밤 시뮬(시뮬 B)의 결과를 담음.
+        //   야미-밤톨 대면 서사가 리포트 문장들로 정리되어 아침에 브리핑됨.
+        //   순서 보장: UI 큐에 먼저 들어가므로 아래 yami_retries_bookclub 컷신보다 먼저 표시.
+        id: 'd3_morning_reports_popup',
+        trigger: { type: 'autoOnStageEnter' },
+        required: false,
+        preconditions: [],
+        effects: [
+          { type: 'showReportsModal',
+            title: '🌅 3일차 아침',
+            bodyIntro: '어젯밤, 동네에선 이런 일들이 있었다더라.' },
+        ],
+      },
+
+      {
         id: 'yami_retries_bookclub',
         trigger: { type: 'autoOnStageEnter' }, // 단계 진입 즉시 자동 발동
         required: false,
@@ -406,10 +422,30 @@ window.BOOKSTORE_SCENARIO = {
           { type: 'injectNpcContext', npcId: 'bamtol',
             text: '방금 유저가 서점에 들어왔다. 야미 일로 온 것이 분명하다. ' +
                   '너는 첫 마디부터 "할 말 없다"고 선을 그었지만, 유저가 바로 ' +
-                  '돌아가지 않자 마주 서 있는 중. 속으로는 이 대화를 피하고 ' +
-                  '싶지만, 유저가 무엇을 짚어올지 조금은 긴장하고 있다. 너의 ' +
-                  '방어는 강하지만 완벽하지 않다. 유저가 장부 기록을 환기하거나, ' +
-                  '차카 발언의 오독을 짚으면 속으로 흔들릴 수 있다.' },
+                  '돌아가지 않자 마주 서 있는 중. ' +
+                  // [피드백 D1] 밤톨 꼰대 유지 — 쉽게 흔들리지 않음.
+                  //   스크린샷 1 이슈: 밤톨이 "장부는 정확" 말하다가 다음 턴에
+                  //   "네 말을 아예 무시할 순 없군" 으로 금세 수용. 캐릭터 깨짐.
+                  //   원칙:
+                  //   1) 유저가 단순히 "다시 보라", "생각해봐라" 정도만 말하면 절대 흔들리지 않음.
+                  //   2) 장부 얘기 꺼내면 "장부는 언제나 정확하네. 그래서 이상한 거지" 식으로
+                  //      오히려 자기 원칙을 더 강조. "다시 볼게" 라고 양보하지 않음.
+                  //   3) 진짜로 설득되려면 유저가 구체적 모순을 짚어야 함:
+                  //      - "예약 한 권인데 차카가 많이 산다는 게 말이 되냐"
+                  //      - "사진은 서점 방문 증거일 뿐 훔쳤다는 증거는 아니다"
+                  //      - "장부 사인이 있는데 왜 도둑질로 몰아가냐"
+                  //      이런 지적에 처음엔 "그건..." 하고 살짝 멈칫은 하지만,
+                  //      곧바로 "그래도 책이 한 권 비어있는 건 사실이네" 로 방어 복귀.
+                  //   4) 유저가 같은 지적을 반복해도 절대 "네 말이 맞군, 다시 볼게" 같은
+                  //      포기성 수용을 하지 않음. 오히려 "나도 내 할 일은 다 한 거야" 식으로
+                  //      자기 정당성 주장.
+                  //   5) 감정적 호소 ("야미가 얼마나 착한 애인지 알잖아" 등)에 완전히 차가움.
+                  '너는 서점 주인이고, 장부는 네 직업의 핵심이야. 그래서 장부를 다시 보라는 ' +
+                  '말을 들으면 오히려 더 방어적으로 반응한다. "장부는 정확하게 기록했네. ' +
+                  '그게 내가 평생 해온 방식이지" 같은 톤. 한 번에 설득되지 마라. ' +
+                  '유저의 반박마다 처음엔 반응하는 척하다가 결국 자기 입장으로 돌아와라. ' +
+                  '너의 방어는 강하고, 쉽게 무너지지 않는다. ' +
+                  '절대 대답에 "감정", "장부", "확인하지 않았다" 같은 분석성 단어를 쓰지 않는다.' },
           // [Wave 1] 유저가 서점 들어온 직후 밤톨 선발화 — 방어적인 톤.
           { type: 'npcSpeaksFirst', npcId: 'bamtol',
             text: '...야미 얘기라면 듣고 싶지 않군. 할 말 있으면 짧게 해.' },
@@ -823,6 +859,11 @@ window.BOOKSTORE_SCENARIO = {
           //   여기 남은 effects 는 runEndingPostEffects 가 시뮬 종료 후 실행.
           key: 'high',
           condition: { type: 'affinityGte', npcId: 'bamtol', value: 50 },
+          // [피드백 B1 — 사용자 재확정] 호감도 높음 매핑:
+          //   "밤톨을 설득하여 서점을 다시 확인해보세요."
+          //   (문구 자체는 '설득하여'를 포함 — 사용자의 원래 요청대로 유지.)
+          previewTitle: '✨ 밤톨 사장님이 마음을 열었어요',
+          previewBody: '밤톨을 설득하여 서점을 다시 확인해보세요.',
           effects: [
             { type: 'changeAffinity', npcId: 'yami',   delta: +10 },
             { type: 'changeAffinity', npcId: 'bamtol', delta: +5 },
@@ -835,6 +876,10 @@ window.BOOKSTORE_SCENARIO = {
           //   시뮬 C (ENDING_SCRIPTS.low) 안에서 이미 장면과 evidence 팝업 재생.
           key: 'low',
           condition: { type: 'default' },
+          // [피드백 B1 — 사용자 재확정] 호감도 낮음 매핑:
+          //   "야미와 서점을 다시 가보세요."
+          previewTitle: '🌙 야미와 함께 확인해봐요',
+          previewBody: '야미와 서점을 다시 가보세요.',
           effects: [
             { type: 'changeAffinity', npcId: 'yami',   delta: +5 },
             { type: 'changeAffinity', npcId: 'bamtol', delta: +3 },
