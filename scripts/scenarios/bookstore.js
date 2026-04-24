@@ -284,8 +284,12 @@ window.BOOKSTORE_SCENARIO = {
                   '걸 안다. 그런데 차카는 "많이 사더라"라고 하고, 오늘 책장에는 ' +
                   '책 한 권이 비어 있다. 네 머릿속 결론: "야미가 예약한 한 권만 ' +
                   '가져가야 하는데, 사실은 그 이상을 가져갔다" — 즉 도둑질이다. ' +
-                  '이 확신이 강해진 상태. 장부는 확인하지 않았고, 감정이 앞서고 ' +
-                  '있으며, 이 길로 야미를 찾아가 따질 생각이다.' },
+                  // [Tier 1 #7] "감정이 앞서고 있으며" 같은 메타 설명 제거.
+                  //   AI 가 이걸 "오늘은 감정이 앞서서…" 식으로 그대로 발화에 옮기는 버그 있었음.
+                  //   대신 행동 차원으로만 묘사 — 어떤 감정·심리 단어도 쓰지 않음.
+                  '너는 이 결론을 확신하고 있고, 지금 바로 야미를 찾아가 따지려는 참이다. ' +
+                  '누가 야미를 옹호하면 상대를 포함해 짜증 섞인 단정적 말투로 반응한다. ' +
+                  '절대 대답에 "감정", "장부", "확인하지 않았다" 같은 분석성 단어를 쓰지 않는다.' },
 
           // [Wave 1] 장면 후 차카 선발화. — followUp
           // 컷신 끝난 뒤 openZetaNpcId='chaka' 에 의해 자동으로 대화창이 열리면
@@ -299,31 +303,51 @@ window.BOOKSTORE_SCENARIO = {
       {
         // [유지 — preconditions 만 업데이트] 밤톨이 야미를 찾아가 화내고 간 직후.
         // 플레이어가 야미에게 접근하면 "방금 밤톨한테 혼남" 상태의 야미를 만남.
-        // [향후 단계 2] 이 이벤트도 모달 대신 실제 NPC 연출로 승격 가능
-        //              (밤톨이 야미에게 다가가는 장면 → 카메라 추적 → 페이드).
+        // [Tier 2 #9] showStoryModal 제거 — 별도 팝업 대신 야미 선발화로 녹임.
+        //   팝업 내용(야미 눈가 붉음, 방금 밤톨이 다녀감, 해명 못 함)이
+        //   선발화 텍스트에 담겨 유저가 처음 만난 순간부터 상황을 이해할 수 있음.
+        //   injectNpcContext 는 유지 (이후 AI 대화용 배경).
         id: 'bamtol_confronts_yami',
         trigger: { type: 'approachNpc', npcId: 'yami' },
         required: false,
         preconditions: [{ all: ['chaka_shows_night_photo'] }],
         effects: [
-          { type: 'showStoryModal',
-            title: '야미의 모습',
-            body:
-              '야미의 눈가가 붉어요. 책장 모서리를 꽉 쥔 손이 조금 떨려요.\n\n' +
-              '조금 전 밤톨이 이곳을 찾아와 크게 소리쳤다고 해요.\n' +
-              '"왜 책을 훔쳤냐"며, 해명도 듣지 않고 가버렸다고.\n\n' +
-              '야미가 당신을 올려다봐요. 할 말이 있는 것 같기도, 그냥 아무 말도 ' +
-              '하고 싶지 않은 것 같기도 한 눈빛이에요.' },
           { type: 'injectNpcContext', npcId: 'yami',
             text: '방금 밤톨 사장님이 너를 찾아와 "왜 책을 훔쳤냐"며 크게 화를 ' +
                   '내고 돌아갔다. 해명할 기회조차 주지 않았다. 너는 억울하고 ' +
                   '충격에 휩싸여 있다. 유저와 마주친 지금, 처음에는 말을 잘 잇지 ' +
                   '못하지만 유저가 다정하게 대하면 조금씩 속을 털어놓을 수 있다. ' +
                   '갑자기 발생한 일에 당황스럽고 억울하다.' },
-          // [Wave 1] 장면 모달 후 야미 선발화.
+          // [Tier 2 #9] 야미 선발화에 팝업 내용 녹임 — 눈가 붉음/손 떨림은
+          //   텍스트로 "떨리는 목소리" 정도만 간접 표현. "방금 밤톨이 왔다"는
+          //   사실 전달과 "억울함"이라는 감정이 핵심.
           { type: 'npcSpeaksFirst', npcId: 'yami', emotion: 'sad',
-            text: '...방금 밤톨 사장님이 왔다갔지. 왜 내가 책을 훔쳤대... ' +
-                  '난 예약한 《별의 시간》만 가져갔는데. 너무 억울하지.' },
+            text: '...너 왔구나. 방금 밤톨 사장님이 다녀가셨어. ' +
+                  '"왜 책을 훔쳤냐"며 크게 소리치고 가셨지. 내가 해명도 못 했는데. ' +
+                  '나는 예약한 《별의 시간》 한 권만 가져갔을 뿐이야... 너무 억울해.' },
+        ],
+      },
+
+      {
+        // [Tier 2 #8 신규] Day 2 낮, 밤톨이 사진 보고 야미에게 따지러 간 직후
+        // 유저가 밤톨에게 접근하면 → 화난 톤의 선발화로 맞이.
+        //   발동 조건: chaka_shows_night_photo 완료 (밤톨이 오해에 빠진 상태)
+        //             + user_confronts_bamtol 은 아직 안 뜸 (Day 3 이벤트)
+        //   이 시점 밤톨은 이미 야미에게 한바탕 소리치고 돌아와 혼자 서점에 있음.
+        //   유저가 말을 걸면 짜증 섞인 반응 — 대화 초입부터 갈등 톤 설정.
+        id: 'bamtol_after_confrontation',
+        trigger: { type: 'approachNpc', npcId: 'bamtol' },
+        required: false,
+        preconditions: [{ all: ['chaka_shows_night_photo'] }],
+        effects: [
+          { type: 'injectNpcContext', npcId: 'bamtol',
+            text: '방금 야미를 찾아가 "왜 책을 훔쳤냐"며 크게 소리치고 돌아왔다. ' +
+                  '야미가 뭐라고 해명하려 했지만 너는 듣지 않고 가버렸다. ' +
+                  '지금도 흥분이 가라앉지 않은 상태이고, 혼자 있고 싶다. ' +
+                  '유저가 말을 걸어와도 짧고 단정적인 말투로 반응한다. ' +
+                  '절대 대답에 "감정", "장부", "확인하지 않았다" 같은 분석성 단어를 쓰지 않는다.' },
+          { type: 'npcSpeaksFirst', npcId: 'bamtol', emotion: 'angry',
+            text: '...지금은 말 걸지 마. 기분 상해서 아무 말도 하고 싶지 않군.' },
         ],
       },
     ],
@@ -341,18 +365,16 @@ window.BOOKSTORE_SCENARIO = {
         trigger: { type: 'autoOnStageEnter' }, // 단계 진입 즉시 자동 발동
         required: false,
         preconditions: [],
+        // [Tier 2 #11] 기존 showEvidencePopup + showStoryModal 두 개 → playCutscene 으로 교체.
+        //   컷신 스크립트는 state.js 의 CUTSCENE_SCRIPTS.yami_at_bookstore.
+        //   openZetaNpcId 생략 — 컷신 끝나도 대화창 자동 오픈 없이 낮 탐색 복귀.
+        //   이후 유저가 야미에게 접근하면 아래 yami_seeks_user 가 발동.
+        //
+        // [Tier 2 #12 연동] setFlag 'yami_needs_help' — 야미 머리 위
+        //   "나 좀 도와줘" 말풍선 상시 표시용. scene.js 렌더 루프가 이 플래그를 감시.
         effects: [
-          { type: 'showEvidencePopup', assetKey: 'bookclub_poster',
-            caption: '"첫 모임 — 함께 읽을까요?"' },
-          { type: 'showStoryModal',
-            title: '독서 모임은 어떻게 될까',
-            body:
-              '야미가 가방에서 포스터 한 장을 꺼내 밤톨 서점 앞에 섰어요. ' +
-              '첫 독서 모임을 열기 위해 장소를 빌리러 온 것이었죠.\n\n' +
-              '그러나 밤톨은 포스터를 보지도 않은 채 고개를 저었어요.\n' +
-              '"지금은 곤란해."\n\n' +
-              '야미는 몇 번이고 입을 뗐지만, 밤톨은 이미 몸을 돌린 뒤였어요. ' +
-              '포스터가 야미의 손에서 힘없이 구부러졌어요.' },
+          { type: 'playCutscene', cutsceneId: 'yami_at_bookstore' },
+          { type: 'setFlag', key: 'yami_needs_help' },
         ],
       },
 
@@ -374,18 +396,13 @@ window.BOOKSTORE_SCENARIO = {
         // [4차 신규] 유저가 밤톨을 찾아가는 장면. 퀘스트 생성 후에만 발동.
         // 장면 연출 + 밤톨의 방어적 태도를 보여주는 컨텍스트 주입.
         // 실제 퀘스트 해결은 이 이후의 대화에서 마일스톤 판정으로.
+        // [Tier 2 #14] showStoryModal 제거 — 팝업 내용("야미 일이라면 할 말 없네")이
+        //   이미 아래 npcSpeaksFirst 에 그대로 반영됨. 별도 모달은 UX 중복.
         id: 'user_confronts_bamtol',
         trigger: { type: 'approachNpc', npcId: 'bamtol' },
         required: false,
         preconditions: [{ all: ['yami_seeks_user'] }],
         effects: [
-          { type: 'showStoryModal',
-            title: '밤톨 서점',
-            body:
-              '당신이 서점 문을 열자 밤톨이 고개를 들어요. 낯이 굳어요.\n\n' +
-              '"...야미 일이라면, 할 말 없네."\n\n' +
-              '밤톨이 먼저 선을 그어요. 하지만 당신은 그대로 서 있고, ' +
-              '밤톨도 눈을 피하지 않아요. 무슨 얘기가 오갈지 — 이제 당신에게 달렸어요.' },
           { type: 'injectNpcContext', npcId: 'bamtol',
             text: '방금 유저가 서점에 들어왔다. 야미 일로 온 것이 분명하다. ' +
                   '너는 첫 마디부터 "할 말 없다"고 선을 그었지만, 유저가 바로 ' +
@@ -408,6 +425,8 @@ window.BOOKSTORE_SCENARIO = {
         required: false,
         preconditions: [],
         effects: [
+          // [Tier 2 #12] 퀘스트 해결됐으니 야미 "나 좀 도와줘" 말풍선 해제.
+          { type: 'clearFlag', key: 'yami_needs_help' },
           // 엔딩 분기는 엔진이 `ending` 효과를 받으면 퀘스트 해결 시 저장된 플래그로 분기 처리
           { type: 'ending', branchKey: 'bookstore_ending' },
         ],
