@@ -686,26 +686,31 @@
           _showNextUi();
         }
       } else if (next.kind === 'reports') {
-        // [카테고리 1 신규 → 피드백 1번 수정]
-        // Day 2 아침 "어젯밤의 소식" 팝업.
-        // 기존: state.reports 를 읽음 → 실행 순서상 아직 비어있어서 "특별한 소식은 없었어요" 로 표시됨.
-        // 수정: engineState.lastNightReports (runNightSimulation 이 방금 저장한 스냅샷) 을 읽음.
-        //       "방금 밤에 있었던 일"만 정확히 보여주는 의도와도 부합.
+        // [카테고리 1 신규 → 피드백 1번 수정 → 피드백 A2 신문 스타일]
+        // 아침 "어젯밤의 소식" 팝업.
+        // 기존: showStoryModal(title, body) — 단순 텍스트 나열.
+        // 수정: showNewsModal(title, bodyIntro, reports) — 신문 제호 + 헤드라인 + 기사 카드.
+        // engineState.lastNightReports 그대로 전달. primaryNpcId 로 NPC 이모지/이름 매핑.
         try {
-          let body = next.bodyIntro ? next.bodyIntro + '\n\n' : '';
-          const src = (engineState.lastNightReports || []);
-          if (src.length > 0) {
-            body += src.map(function (r) {
-              const npcName = (state && Array.isArray(state.npcs))
-                ? ((state.npcs.find(function (n) { return n.id === r.primaryNpcId; }) || {}).name || '')
-                : '';
-              const prefix = npcName ? '📋 ' + npcName + ': ' : '📋 ';
-              return prefix + (r.line || '(내용 없음)');
-            }).join('\n\n');
-          } else {
-            body += '(특별한 소식은 없었어요.)';
-          }
-          if (typeof showStoryModal === 'function') {
+          const src = (engineState.lastNightReports || []).map(function (r) {
+            return { line: r.line || '', primaryNpcId: r.primaryNpcId || null };
+          });
+          if (typeof showNewsModal === 'function') {
+            showNewsModal(next.title || '📜 어젯밤의 소식', next.bodyIntro || '', src);
+          } else if (typeof showStoryModal === 'function') {
+            // 폴백: 신문 모달 없으면 단순 모달로.
+            let body = next.bodyIntro ? next.bodyIntro + '\n\n' : '';
+            if (src.length > 0) {
+              body += src.map(function (r) {
+                const npcName = (state && Array.isArray(state.npcs))
+                  ? ((state.npcs.find(function (n) { return n.id === r.primaryNpcId; }) || {}).name || '')
+                  : '';
+                const prefix = npcName ? '📋 ' + npcName + ': ' : '📋 ';
+                return prefix + (r.line || '(내용 없음)');
+              }).join('\n\n');
+            } else {
+              body += '(특별한 소식은 없었어요.)';
+            }
             showStoryModal(next.title || '📜 어젯밤의 소식', body);
           } else {
             _showNextUi();
@@ -1119,27 +1124,55 @@
               // flags 에도 기록 (나중에 분석/디버그용)
               engineState.flags[branchKey + '_selected'] = chosen.key;
 
-              // [시뮬 C 수정] 선택된 branch 의 effects 를 즉시 실행하지 않고,
-              //   startEndingSimulation 에 전달 → 시뮬 재생이 끝난 뒤
-              //   runEndingPostEffects 가 실행하도록 한다.
-              //   이유: effects 안에 showStoryModal 이 있으면 시뮬 시작 전에
-              //        모달이 떠서 연출 흐름을 깨뜨림. 또한 showEvidencePopup 은
-              //        이미 bookstore.js 에서 제거되어 시뮬 안 evidence 이벤트로
-              //        재생됨. 여기서는 changeAffinity 등 비시각 effects 만 남음.
-              if (typeof startEndingSimulation === 'function') {
-                startEndingSimulation(chosen.key, chosen.effects || []);
-              } else {
-                // fallback: 시뮬 함수가 없으면 (로드 순서 등 예외) 기존 동작 유지
-                console.warn('[engine][effect] ending: startEndingSimulation 미정의, 즉시 실행 fallback');
-                if (Array.isArray(chosen.effects)) {
-                  _applyEffects(chosen.effects, {
-                    source: 'ending:' + branchKey + ':' + chosen.key
-                  });
+              // [피드백 B1] 엔딩 분기 예고 팝업.
+              //   기존: ending effect 받으면 즉시 startEndingSimulation → 유저가 "야미
+              //         클릭하자마자 엔딩" 느낌. 상황 파악 시간이 없음.
+              //   수정: chosen.previewTitle / chosen.previewBody 가 정의돼 있으면
+              //         startEndingSimulation 을 "확인 버튼 콜백"으로 지연시킴.
+              //         시나리오 정의에서 branch 마다 예고 메시지를 설정할 수 있음.
+              //   팝업 없는 branch 는 기존대로 즉시 시작.
+              const chosenRef = chosen;
+              const startSim = function () {
+                if (typeof startEndingSimulation === 'function') {
+                  startEndingSimulation(chosenRef.key, chosenRef.effects || []);
+                } else {
+                  console.warn('[engine][effect] ending: startEndingSimulation 미정의, 즉시 실행 fallback');
+                  if (Array.isArray(chosenRef.effects)) {
+                    _applyEffects(chosenRef.effects, {
+                      source: 'ending:' + branchKey + ':' + chosenRef.key
+                    });
+                  }
                 }
+              };
+
+              if (chosen.previewTitle && chosen.previewBody
+                  && typeof showConfirmModal === 'function') {
+                // 확인 모달로 예고 → 확인 시 시뮬 시작. 취소는 없도록 단일 버튼 처리:
+                //   yes 콜백 = 시뮬 시작, noLabel 을 빈 문자열로 숨기진 않되 현재
+                //   showConfirmModal 구조상 취소 버튼이 기본 표시됨 → 단일 버튼 알림 모달
+                //   역할로 쓰기 위해 confirm 대신 story modal + 콜백 조립.
+                //   그러나 showStoryModal 은 콜백 없음. → 커스텀 1회용 모달 생성.
+                showEndingPreviewModal(chosenRef.previewTitle, chosenRef.previewBody, startSim);
+              } else if (typeof showStoryModal === 'function' && chosen.previewTitle && chosen.previewBody) {
+                // showConfirmModal 도 없고 previewTitle 만 있는 경우: story modal + setTimeout.
+                // 유저가 닫기 누르면 그때 startSim 불리도록 __closeStoryModal 후킹.
+                const origClose = window.__closeStoryModal;
+                window.__closeStoryModal = function () {
+                  if (typeof origClose === 'function') origClose();
+                  window.__closeStoryModal = origClose;
+                  startSim();
+                };
+                showStoryModal(chosenRef.previewTitle, chosenRef.previewBody);
+              } else {
+                // 예고 메시지 없음 → 즉시 시작 (기존 동작).
+                startSim();
               }
+
               log.push({
                 type: fx.type, branchKey: branchKey,
-                selectedBranch: chosen.key, status: 'ok'
+                selectedBranch: chosen.key,
+                preview: !!(chosen.previewTitle),
+                status: 'ok'
               });
             }
             break;
