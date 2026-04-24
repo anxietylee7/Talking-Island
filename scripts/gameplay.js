@@ -116,11 +116,14 @@ async function sendChatMessage(text) {
     npc.dreamProgress = Math.min(100, npc.dreamProgress + 2);
     
     // 말풍선에 최근 메시지 임시 표시 (4초간)
+    // [Wave 3 이슈 α] chatBubbleEl (이름표와 분리된 말풍선) 사용
     const meshData = npcMeshes[npcId];
     if (meshData) {
       const shortMsg = response.length > 20 ? response.substring(0, 20) + '...' : response;
-      meshData.speechBubbleEl.textContent = `${npc.emoji} ${shortMsg}`;
-      meshData.speechBubbleEl.classList.add('chatting');
+      if (meshData.chatBubbleEl) {
+        meshData.chatBubbleEl.textContent = shortMsg;
+        meshData.chatBubbleEl.classList.remove('hide');
+      }
       meshData.chatMessage = shortMsg;
       meshData.chatTimer = 4;
     }
@@ -612,7 +615,7 @@ function renderContent() {
             <div style="font-size:22px">${npc?.emoji}</div>
             <div style="font-weight:700">${npc?.name}의 퀘스트</div>
           </div>
-          <div>${escapeHtml(q.situation)}</div>
+          <div>${escapeHtml(getQuestDisplayText(q))}</div>
           ${(q.relatedRumors && q.relatedRumors.length > 0) ? `
             <div class="quest-rumors">
               <div>관련 소문:</div>
@@ -645,7 +648,7 @@ function renderContent() {
                   ${!q.resolved ? '<span style="color:#e63946; margin-left:4px">●NEW</span>' : '<span style="color:#888; margin-left:4px; font-size:10px">✓ 완료</span>'}
                 </div>
               </div>
-              <div style="font-size:11px; color:#9c7a5a; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden">${escapeHtml(q.situation)}</div>
+              <div style="font-size:11px; color:#9c7a5a; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden">${escapeHtml(getQuestDisplayText(q))}</div>
               <div style="font-size:10px; color:#b59878">Day ${q.day}</div>
             </div>`;
           }).join('')
@@ -666,6 +669,17 @@ function renderContent() {
 
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// [Wave 3 이슈 η] 퀘스트 탭에 표시될 텍스트 선택.
+// - 스토리 퀘스트: scenario.quests[id].description 우선 (간결한 퀘스트 설명)
+// - 없으면 q.situation 폴백 (레거시 ad-hoc 퀘스트 호환)
+function getQuestDisplayText(q) {
+  if (q && q.isStory && window.scenarioEngine && window.scenarioEngine.scenario) {
+    const qdef = (window.scenarioEngine.scenario.quests || {})[q.id];
+    if (qdef && qdef.description) return qdef.description;
+  }
+  return q?.situation || '';
 }
 
 // 탭 이벤트
