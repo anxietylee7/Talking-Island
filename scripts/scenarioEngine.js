@@ -1483,6 +1483,17 @@
     console.log('[Q#22] 최종 questMilestones[' + activeQuest.id + '] =',
                 Array.from(targetSet), ' (size=' + targetSet.size + ')');
 
+    // [피드백 #4] 야미 관련 마일스톤 달성 시 즉시 도움 말풍선 해제.
+    //   이전: yami_needs_help 플래그가 resolved_notify (2/2 완료) 까지 유지.
+    //   수정: 야미 마일스톤 (understood_yamis_side) 하나만 달성해도 말풍선 꺼짐.
+    //         플레이 경험상 "야미한테 이미 얘기 들었으니 이제 뭘 할지 알았다" 에 상응.
+    if (newlyAchieved.indexOf('understood_yamis_side') >= 0) {
+      if (engineState.flags.hasOwnProperty('yami_needs_help')) {
+        delete engineState.flags['yami_needs_help'];
+        console.log('[Q#22b] yami_needs_help 플래그 해제 (understood_yamis_side 달성)');
+      }
+    }
+
     // 6. threshold 검사
     const threshold = questDef.resolveThreshold || questDef.milestones.length;
     const totalAchieved = targetSet.size;
