@@ -94,8 +94,11 @@
   .empty-state { text-align: center; padding: 40px 20px; color: #9c7a5a; font-size: 12px; }
   .empty-state .big-emoji { font-size: 36px; margin-bottom: 8px; display: block; }
   
+  /* [피드백 #3] notification 위치 수정 — 이전엔 top:70px 로 quest-banner(top:66px)
+     와 같은 영역을 공유 → 두 요소가 겹쳐 글자가 서로 깔림 (Image 2).
+     임시 알림은 화면 하단으로 이동. 중요한 퀘스트 배너는 상단 유지. */
   #notification {
-    position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(12px);
     background: white; padding: 10px 20px; border-radius: 999px;
     border: 2px solid #f4b6c1; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     font-size: 12px; font-weight: 600; color: #6b4423; z-index: 100;
