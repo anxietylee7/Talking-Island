@@ -1038,17 +1038,28 @@ function spawnNpcMesh(npc) {
   
   // 이름 말풍선 DOM — 시나리오 NPC는 자기 emoji, 가챠 NPC는 animal emoji
   const bubbleEmoji = npc.emoji || animal.emoji;
-  const bubble = document.createElement('div');
-  bubble.className = 'speech-bubble' + (npc.isStory ? ' story' : '');
-  bubble.textContent = `${bubbleEmoji} ${npc.name}`;
-  document.getElementById('app').appendChild(bubble);
-  
+
+  // [Wave 3 이슈 α] 이름표와 대사 말풍선을 별도 요소로 분리.
+  // - nameTag: 항상 표시되는 이름 라벨 (기존 speech-bubble 역할)
+  // - chatBubble: 대사가 있을 때만 표시되는 말풍선. 이름표 위에 떠 있음.
+  // 두 요소 위치는 scene.js 의 업데이트 루프에서 동일 스크린 좌표를 공유하되,
+  // chatBubble 은 CSS 로 추가 Y 오프셋(-28px) 을 줘서 이름 위로 올림.
+  const nameTag = document.createElement('div');
+  nameTag.className = 'speech-bubble' + (npc.isStory ? ' story' : '');
+  nameTag.textContent = `${bubbleEmoji} ${npc.name}`;
+  document.getElementById('app').appendChild(nameTag);
+
+  const chatBubble = document.createElement('div');
+  chatBubble.className = 'chat-bubble hide';
+  document.getElementById('app').appendChild(chatBubble);
+
   npcMeshes[npc.id] = {
     mesh,
     target: getFavoriteLocation(npc),
     targetPos: null,
     state: 'walking',
-    speechBubbleEl: bubble,
+    speechBubbleEl: nameTag,     // 기존 참조 유지용 alias — 이름표 가리킴
+    chatBubbleEl: chatBubble,    // 신규 — 대사 전용 말풍선
     walkTimer: 0,
     idleTimer: 0,
     bounce: 0,
@@ -1069,6 +1080,7 @@ function removeNpcMesh(npcId) {
   if (npcMeshes[npcId]) {
     scene.remove(npcMeshes[npcId].mesh);
     npcMeshes[npcId].speechBubbleEl.remove();
+    if (npcMeshes[npcId].chatBubbleEl) npcMeshes[npcId].chatBubbleEl.remove();
     delete npcMeshes[npcId];
   }
 }
@@ -1976,6 +1988,7 @@ function updateNpcs(dt) {
     // 메시가 visible=false면 이동/말풍선 처리 건너뜀
     if (!n.mesh.visible) {
       n.speechBubbleEl.classList.add('hide');
+      if (n.chatBubbleEl) n.chatBubbleEl.classList.add('hide');
       return;
     }
     
@@ -1984,15 +1997,20 @@ function updateNpcs(dt) {
     const viewInterior = state.viewMode === 'interior';
     if ((n.currentScene === 'interior') !== viewInterior) {
       n.speechBubbleEl.classList.add('hide');
+      if (n.chatBubbleEl) n.chatBubbleEl.classList.add('hide');
       return;
     }
     
-    // 채팅 메시지 타이머
+    // [Wave 3 이슈 α] 채팅 메시지 타이머 — chatBubbleEl (이름표와 분리된 말풍선) 에 적용.
     if (n.chatTimer > 0) {
       n.chatTimer -= dt;
       if (n.chatTimer <= 0 && n.chatMessage) {
         n.chatMessage = null;
-        n.speechBubbleEl.textContent = `${npc.emoji} ${npc.name}`;
+        if (n.chatBubbleEl) {
+          n.chatBubbleEl.textContent = '';
+          n.chatBubbleEl.classList.add('hide');
+        }
+        // 이름표의 chatting 스타일도 제거 (혹시 과거에 설정됐다면)
         n.speechBubbleEl.classList.remove('chatting');
       }
     }
@@ -2100,12 +2118,22 @@ function updateNpcs(dt) {
     // 카메라 뒤에 있으면 숨김 (clipping space에서 z > 1이면 뒤)
     if (vec.z > 1 || vec.z < -1) {
       n.speechBubbleEl.classList.add('hide');
+      if (n.chatBubbleEl) n.chatBubbleEl.classList.add('hide');
     } else {
       n.speechBubbleEl.classList.remove('hide');
       const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
       const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
       n.speechBubbleEl.style.left = x + 'px';
       n.speechBubbleEl.style.top = y + 'px';
+
+      // [Wave 3 이슈 α] chatBubbleEl 위치도 같이 업데이트. 이름표 위에 뜨도록
+      // Y 오프셋은 CSS 에서 transform translateY(-28px) 로 처리. 여기선 동일 좌표만 전달.
+      if (n.chatBubbleEl) {
+        n.chatBubbleEl.style.left = x + 'px';
+        n.chatBubbleEl.style.top = y + 'px';
+        // hide 토글은 chatTimer 로직에서만 관리 — 이 블록에서는 건드리지 않음.
+        // (대사가 활성 상태인데 여기서 강제로 remove('hide')하면 이상해짐)
+      }
     }
   });
 }
