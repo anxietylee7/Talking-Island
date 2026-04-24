@@ -1073,6 +1073,51 @@
             }
             break;
 
+          case 'npcSpeaksFirst':
+            // [Wave 1 신규] 증거 팝업·스토리 모달 이후 NPC가 대화창에서 먼저 말하도록
+            // chatHistory 에 미리 메시지를 삽입. AI 호출 없이 하드코딩 대사 사용.
+            //
+            // 동작:
+            //   - state.chatHistory[npcId] 가 없으면 배열 생성
+            //   - 마지막 메시지가 이미 동일 텍스트면 중복 삽입 방지
+            //   - { role:'npc', text, emotion, source:'scripted' } 형태로 push
+            //   - 첫 만남일 때 openZeta 가 쓰는 인사말과 중복될 가능성 → history 비어있으면
+            //     인사말 스킵 대신 이 대사로 대체되도록 special handling
+            //
+            // 파라미터:
+            //   npcId, text, emotion?  (기본 'natural')
+            //
+            // 중요: dialogue emotion 태그 제거는 openZeta/__zetaSend 가 담당.
+            //       여기서 전달한 text 는 그대로 저장됨.
+            if (fx.npcId && typeof fx.text === 'string' && fx.text.trim()) {
+              if (typeof state !== 'undefined' && state) {
+                if (!state.chatHistory) state.chatHistory = {};
+                if (!Array.isArray(state.chatHistory[fx.npcId])) {
+                  state.chatHistory[fx.npcId] = [];
+                }
+                const hist = state.chatHistory[fx.npcId];
+                const lastMsg = hist[hist.length - 1];
+                const isDup = lastMsg && lastMsg.role === 'npc' && lastMsg.text === fx.text;
+                if (!isDup) {
+                  hist.push({
+                    role: 'npc',
+                    text: fx.text,
+                    emotion: fx.emotion || 'natural',
+                    source: 'scripted',
+                  });
+                  log.push({ type: fx.type, npcId: fx.npcId, status: 'ok' });
+                } else {
+                  log.push({ type: fx.type, npcId: fx.npcId, status: 'skipped_dup' });
+                }
+              } else {
+                log.push({ type: fx.type, status: 'skipped_no_state' });
+              }
+            } else {
+              console.warn('[engine][effect] npcSpeaksFirst: npcId 또는 text 누락', fx);
+              log.push({ type: fx.type, status: 'invalid' });
+            }
+            break;
+
           default:
         }
       } catch (err) {
