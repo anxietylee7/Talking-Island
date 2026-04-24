@@ -2294,92 +2294,62 @@ function updateTimeOfDay(dt) {
 
 // 조명/창문/상단 바 업데이트 — state.timeOfDay 값에 따라
 function updateSimulationLighting() {
-  let t = state.timeOfDay;
+  // [피드백 #조명고정] 사용자 요청:
+  //   - 낮/밤 점진 전환 없음. 완전히 이분법.
+  //   - 낮은 항상 밝게 (정오 톤 고정).
+  //   - 침대 상호작용으로 "밤 시뮬" 진입했을 때만 밤 조명.
+  //   - 시뮬 종류별 분기:
+  //       night 모드    → 밤 조명
+  //       cutscene/ending 모드 → 낮 조명 (기본값과 동일)
+  //       기본 (시뮬 밖) → state.phase 참조. 'night' 이면 밤, 아니면 낮.
+  //
+  //   이전 버전의 timeOfDay 기반 연속 보간(새벽/아침/저녁 그라데이션)은 전부 제거.
+  //   timeOfDay 는 여전히 시뮬 엔진 내부에서 스크립트 타임라인 계산용으로 쓰이지만,
+  //   조명에는 영향을 주지 않는다.
 
-  // [Tier 1 #2] 시뮬 중엔 조명 고정.
-  //   - night 모드 (밤 시뮬 B): 항상 한밤 조명 (t=0.05)
-  //   - ending/cutscene 모드 (시뮬 A/C): 항상 정오 조명 (t=0.5)
-  //   이유: timeOfDay 가 시뮬 중 누적 증가하면 조명이 서서히 바뀌어 연출 분위기가 흔들림.
-  //         한 씬 내내 일관된 분위기를 유지하기 위해 t 값 자체를 고정해서 조명 계산.
+  let isNight;
   if (state.simulation && state.simulation.active) {
-    if (state.simulation.mode === 'night') {
-      t = 0.05;  // 한밤 범위 (<0.15)
-    } else {
-      t = 0.5;   // 정오 범위 (0.4~0.6)
-    }
+    isNight = (state.simulation.mode === 'night');
+  } else {
+    isNight = (state.phase === 'night');
   }
 
   let skyColor, lightColor, lightIntensity, ambient;
-  
-  if (t < 0.15) {
-    // 한밤
+  if (isNight) {
+    // 밤 조명 — 침대 상호작용 → 시뮬 B 중에만.
     skyColor = new THREE.Color(0x2a3a5c);
     lightColor = new THREE.Color(0x4a5a8c);
     lightIntensity = 0.2;
     ambient = 0.2;
-  } else if (t < 0.28) {
-    // 새벽→아침
-    const p = (t - 0.15) / 0.13;
-    skyColor = new THREE.Color(0x2a3a5c).lerp(new THREE.Color(0xffc896), p);
-    lightColor = new THREE.Color(0xff9e5c).lerp(new THREE.Color(0xffb87a), p);
-    lightIntensity = 0.2 + p * 0.35;
-    ambient = 0.2 + p * 0.25;
-  } else if (t < 0.4) {
-    const p = (t - 0.28) / 0.12;
-    skyColor = new THREE.Color(0xffc896).lerp(new THREE.Color(0xfef3e7), p);
-    lightColor = new THREE.Color(0xffb87a).lerp(new THREE.Color(0xfff0d0), p);
-    lightIntensity = 0.55 + p * 0.2;
-    ambient = 0.45 + p * 0.1;
-  } else if (t < 0.6) {
+  } else {
+    // 낮 조명 — 기본. 항상 밝음.
     skyColor = new THREE.Color(0xfef3e7);
     lightColor = new THREE.Color(0xfff0d0);
     lightIntensity = 0.75;
     ambient = 0.55;
-  } else if (t < 0.72) {
-    const p = (t - 0.6) / 0.12;
-    skyColor = new THREE.Color(0xfef3e7).lerp(new THREE.Color(0xffc896), p);
-    lightColor = new THREE.Color(0xfff0d0).lerp(new THREE.Color(0xff9e5c), p);
-    lightIntensity = 0.75 - p * 0.25;
-    ambient = 0.55 - p * 0.1;
-  } else if (t < 0.85) {
-    const p = (t - 0.72) / 0.13;
-    skyColor = new THREE.Color(0xffc896).lerp(new THREE.Color(0x6b4c93), p);
-    lightColor = new THREE.Color(0xff9e5c).lerp(new THREE.Color(0x6a5a8c), p);
-    lightIntensity = 0.5 - p * 0.25;
-    ambient = 0.45 - p * 0.15;
-  } else {
-    skyColor = new THREE.Color(0x2a3a5c);
-    lightColor = new THREE.Color(0x4a5a8c);
-    lightIntensity = 0.25;
-    ambient = 0.25;
   }
-  
+
   renderer.setClearColor(skyColor);
   scene.fog.color = skyColor;
   sunLight.color = lightColor;
   sunLight.intensity = lightIntensity;
   ambientLight.color = lightColor;
   ambientLight.intensity = ambient;
-  
+
   // 밤에는 창문 빛나기
-  const isNight = t < 0.15 || t > 0.85;
   buildings.forEach(b => {
     if (b.userData.windowMat) {
       b.userData.windowMat.emissive = isNight ? new THREE.Color(0xffd580) : new THREE.Color(0x000000);
     }
   });
-  
-  // 상단 바 업데이트
-  let phaseLabel = '☀️ 낮';
-  if (t < 0.15) phaseLabel = '🌙 밤';
-  else if (t < 0.28) phaseLabel = '🌄 새벽';
-  else if (t < 0.4) phaseLabel = '🌅 아침';
-  else if (t < 0.6) phaseLabel = '☀️ 낮';
-  else if (t < 0.72) phaseLabel = '🌤️ 오후';
-  else if (t < 0.85) phaseLabel = '🌇 저녁';
-  else phaseLabel = '🌙 밤';
-  document.getElementById('day-badge').textContent = `Day ${state.day} · ${phaseLabel}`;
-  document.getElementById('time-bar-fill').style.width = (t * 100) + '%';
+
+  // 상단 바 업데이트 — 낮/밤 이분.
+  const phaseLabel = isNight ? '🌙 밤' : '☀️ 낮';
+  const dayBadge = document.getElementById('day-badge');
+  if (dayBadge) dayBadge.textContent = `Day ${state.day} · ${phaseLabel}`;
+  // time-bar-fill 은 여전히 timeOfDay 반영 (UI 하단 작은 바). 영향 없음.
+  const timeBarFill = document.getElementById('time-bar-fill');
+  if (timeBarFill) timeBarFill.style.width = (state.timeOfDay * 100) + '%';
 }
 
 // =========================================================
