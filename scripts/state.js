@@ -254,7 +254,7 @@ const NIGHT_SCRIPTS = {
 
     // 장면 5 (1.24~): 밤톨 반박 → 서점 안으로 들어감
     { id: 'd2_s5_bamtol_bubble', at: 1.24, type: 'bubble', npc: '밤톨',
-      text: '그럼 책장에서 사라진 한 권은요?', duration: 5 },
+      text: '그럼 책장에서 사라진 한 권은 뭔데?', duration: 5 },
     // 밤톨이 서점 중앙으로 이동 (걸어가는 과정 보여줌). (8, 3.5)→(8, 6) 거리 2.5유닛,
     // NPC 속도 2.0유닛/초 → 약 1.25초 소요. 다음 hide 까지 2초 여유로 충분.
     { id: 'd2_s5_bamtol_move', at: 1.30, type: 'move', npc: '밤톨',
@@ -575,7 +575,9 @@ function startSleepSequence() {
     // [시뮬 B 추가] Day 2 밤 시뮬도 speed=1 — Day 1 과 동일한 템포 (장면당 8초) 로 설계됨.
     //              at 간격 0.12 × 스크립트 시계 0.015 = 장면당 8초 (speed=1 전제).
     //              3배속으로 돌리면 장면당 2.7초밖에 안 되어 유저가 인지할 시간이 없음.
-    sim.speed = (state.day === 1 || state.day === 2) ? 1 : 3;
+    // [Tier 1 #1] 사용자 피드백 — 모든 시뮬 2배속. Day 1/2 는 speed=2, 그 외(사용하지 않지만)는 3.
+    //             장면당 8초 설계 → 2배속으로 장면당 4초가 됨.
+    sim.speed = (state.day === 1 || state.day === 2) ? 2 : 3;
     
     // 3) 현재 시각을 "저녁 시작"으로 맞춤 (0.75 부근부터 스크립트 진행)
     state.timeOfDay = 0.74;
@@ -641,7 +643,8 @@ function startEndingSimulation(branchKey, pendingEffects) {
     sim.eventsFired = new Set();
     sim.cameraMode = 'cinematic';
     sim.cinematicTarget = null;
-    sim.speed = 1;
+    // [Tier 1 #1] 2배속
+    sim.speed = 2;
     sim.paused = false;
     sim.pausedAt = 0;
 
@@ -767,7 +770,8 @@ function _startCutsceneCore(cutsceneId) {
     sim.eventsFired = new Set();
     sim.cameraMode = 'cinematic';
     sim.cinematicTarget = null;
-    sim.speed = 1;
+    // [Tier 1 #1] 2배속
+    sim.speed = 2;
     sim.paused = false;
     sim.pausedAt = 0;
 
@@ -1470,8 +1474,13 @@ let zetaCurrentNpcId = null;
 
 function detectEmotion(text, npcId) {
   // AI 응답에서 감정 추출 (대괄호 태그 또는 키워드)
-  const tagMatch = text.match(/\[감정:([a-z]+)\]/i);
-  if (tagMatch) return tagMatch[1].toLowerCase();
+  // [Tier 1 #13] 파이프(|)가 섞인 태그도 허용. 예: [감정:thinking|sad]
+  //              이 경우 맨 앞 감정만 사용 (AI 가 여러 개를 찍는 버그 대응).
+  const tagMatch = text.match(/\[감정:([a-z|]+)\]/i);
+  if (tagMatch) {
+    const first = tagMatch[1].split('|')[0].trim().toLowerCase();
+    if (first) return first;
+  }
   
   const lower = text.toLowerCase();
   // 긍정
@@ -1645,17 +1654,25 @@ window.__closeZeta = function() {
   const closingNpcId = zetaCurrentNpcId;
   const closingHistory = closingNpcId ? (state.chatHistory[closingNpcId] || []).slice() : [];
 
+  // [Tier 진단 #16] 대화창 닫힘 경로 로그
+  console.log('[Q#00] __closeZeta 호출. closingNpcId=' + closingNpcId +
+              ', closingHistory.length=' + closingHistory.length +
+              ', hasEngine=' + !!window.scenarioEngine +
+              ', hasFn=' + !!(window.scenarioEngine && window.scenarioEngine.evaluateQuestMilestones));
+
   document.getElementById('zeta-chat').classList.remove('show');
   zetaCurrentNpcId = null;
 
   if (closingNpcId && closingHistory.length > 0
       && window.scenarioEngine
       && typeof window.scenarioEngine.evaluateQuestMilestones === 'function') {
+    console.log('[Q#00b] evaluateQuestMilestones 호출 예정...');
     // fire-and-forget. 판정 끝나면 배너 갱신 트리거.
     window.scenarioEngine.evaluateQuestMilestones(closingNpcId, closingHistory)
       .then(function (result) {
+        console.log('[Q#24] evaluateQuestMilestones 완료. result=', result);
         if (result && result.newlyAchievedDetails && result.newlyAchievedDetails.length > 0) {
-          console.log('[state] 마일스톤 달성:', result.newlyAchieved);
+          console.log('[Q#25] 마일스톤 신규 달성:', result.newlyAchieved);
           // [9단계] 구체적 알림 — 어떤 마일스톤이 달성됐는지 명시.
           // 여러 개 동시 달성되면 순차 표시 (각각 3.5초).
           result.newlyAchievedDetails.forEach(function (m, i) {
@@ -1663,6 +1680,8 @@ window.__closeZeta = function() {
               showNotification('✨ 달성: ' + m.description);
             }, i * 3500);
           });
+        } else {
+          console.log('[Q#25b] 신규 달성 없음 (newlyAchievedDetails 비어있음)');
         }
         // 배너 갱신 (정의돼 있으면)
         if (typeof renderQuestBanner === 'function') {
@@ -1670,13 +1689,27 @@ window.__closeZeta = function() {
         }
         // 퀘스트 해결됐으면 UI 전반 갱신
         if (result && result.resolved) {
+          console.log('[Q#26] 퀘스트 해결됨 → renderContent/renderCounts 호출');
           if (typeof renderContent === 'function') { try { renderContent(); } catch(e){} }
           if (typeof renderCounts === 'function')  { try { renderCounts(); } catch(e){} }
+        } else {
+          // [Tier 진단 #16] 퀘스트 해결 아니어도 renderContent 호출해봄 — 진행도 UI 갱신 확인용
+          if (typeof renderContent === 'function') {
+            console.log('[Q#26b] 해결은 아님. 진행도 UI 갱신 위해 renderContent 호출');
+            try { renderContent(); } catch(e){}
+          }
         }
       })
       .catch(function (err) {
-        console.error('[state] evaluateQuestMilestones 실패 (무시):', err);
+        console.error('[Q#27] evaluateQuestMilestones 실패 (무시):', err);
       });
+  } else {
+    // [Tier 진단 #16] 분기 탄 이유 진단
+    console.warn('[Q#00c] evaluateQuestMilestones 호출 건너뜀. 이유:',
+                 !closingNpcId ? 'closingNpcId 없음' :
+                 closingHistory.length === 0 ? '대화 로그 비어있음' :
+                 !window.scenarioEngine ? 'scenarioEngine 없음' :
+                 'evaluateQuestMilestones 함수 없음');
   }
 
   // [9.5단계] 장기 메모리 요약 — 임계치 초과 시 fire-and-forget.
@@ -1730,7 +1763,9 @@ window.__zetaSend = async function() {
     //              엔진의 getDialogueContext 가 전담 (아래 systemFinal 조립부).
     // 감정 태그 지시사항만 isStory NPC 대상으로 유지 (이건 대화 포맷 규칙이라 엔진 밖에 있어야 맞음).
     const emotionDirective = npc.isStory
-      ? '\n\n답변 시작 또는 끝에 [감정:natural|happy|sad|surprised|angry|thinking] 태그를 붙여서 네 현재 감정을 표현해. 예: "그건 말이지... [감정:angry]"'
+      // [Tier 1 #13] "|"를 여러 개 고르라는 뜻으로 오해하지 않도록 문구 강화.
+      //              반드시 한 개만, 다른 문법 금지.
+      ? '\n\n답변 끝에 [감정:XXX] 태그를 정확히 한 번 붙여. XXX 는 natural / happy / sad / surprised / angry / thinking 중 **정확히 하나만** 고른다. 여러 개를 파이프(|) 나 콤마로 나열하지 마라. 예: "그건 말이지... [감정:angry]"'
       : '';
 
     const system = `너는 아기자기한 동네 게임의 NPC다. 캐주얼하고 자연스러운 톤으로 짧게 대답해.
@@ -1776,7 +1811,8 @@ window.__zetaSend = async function() {
     const rawResponse = await callClaude(systemFinal, messagesArr);
     
     // 감정 태그 제거한 깨끗한 응답
-    const cleanResponse = rawResponse.replace(/\[감정:[a-z]+\]/gi, '').trim();
+    // [Tier 1 #13] 파이프(|)가 섞인 태그도 함께 제거. 예: [감정:thinking|sad]
+    const cleanResponse = rawResponse.replace(/\[감정:[a-z|]+\]/gi, '').trim();
     const emotion = detectEmotion(rawResponse, npcId);
     
     // 타이핑 제거
