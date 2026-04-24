@@ -39,7 +39,9 @@ const state = {
   simulation: {
     active: false,        // 시뮬레이션 진행 중?
     startTime: 0,         // 시작한 performance.now() 값
-    speed: 3,             // 시간 흐름 배속 (3배속)
+    // [카테고리 1 수정] Day 1 시네마틱이 총 20초 설계인데 3배속이면 at 범위 초과 →
+    // Day 1 에선 1배속으로 느긋하게, 다른 날 밤엔 기본 3배속 유지.
+    speed: 3,             // 시간 흐름 배속 (기본 3배)
     eventsFired: new Set(), // 이미 발동된 이벤트 id들
     cameraMode: 'cinematic', // 'cinematic' or 'free'
     cinematicTarget: null,   // 카메라가 추적 중인 npc id
@@ -116,20 +118,43 @@ function resolveCollisions(pos, self) {
 // 각 이벤트는 timeOfDay(0~1) 시점에 발동. 유저가 자는 동안 진행됨.
 // 타입: 'move' (npc가 좌표로 이동), 'dialog' (말풍선), 'camera' (카메라 포커스)
 const NIGHT_SCRIPTS = {
-  1: [ // Day 1 밤 — 야미 책 픽업 + 차카 야경 촬영
-    { id: 'd1_intro', at: 0.76, type: 'narration', text: '밤이 깊어가는 동네...' },
-    { id: 'd1_yami_start', at: 0.80, type: 'move', npc: '야미', to: { x: 7.5, z: 7.5 }, 
-      narration: '🐱 야미가 조용히 서점 뒷문으로 향해요.' },
-    { id: 'd1_camera_yami', at: 0.80, type: 'camera', npc: '야미', label: '📸 결정적 순간' },
-    { id: 'd1_chaka_start', at: 0.85, type: 'move', npc: '차카', to: { x: -8, z: -3 }, 
-      narration: '🦝 차카는 사진관 앞에서 야경을 찍고 있어요.' },
-    { id: 'd1_chaka_camera', at: 0.90, type: 'camera', npc: '차카', label: '📸 차카의 렌즈' },
-    { id: 'd1_climax', at: 0.93, type: 'narration', text: '📷 찰칵! — 우연히 먼 곳의 야미가 찍혀요.' },
-    { id: 'd1_yami_back', at: 0.96, type: 'move', npc: '야미', to: { x: 0, z: 0 }, 
-      narration: '🐱 책을 받은 야미가 조용히 집으로 돌아가요.' },
-    { id: 'd1_end', at: 1.05, type: 'end' },
+  1: [ // Day 1 밤 — 야미 책 픽업 + 차카 서점 근처 야경 촬영
+    // [카테고리 1 수정] 5개 덩어리 × 4초 = 총 20초. sim.speed=1 전제.
+    // narration 은 move/camera 와 같은 at 에 배치해 동시 재생.
+
+    // 장면 1 (0.76 ~ 0.82): 분위기 설정
+    { id: 'd1_s1_intro', at: 0.76, type: 'narration',
+      text: '밤이 깊어가는 동네...' },
+
+    // 장면 2 (0.82 ~ 0.88): 야미가 서점으로 이동 + 카메라 야미
+    { id: 'd1_s2_yami_move', at: 0.82, type: 'move', npc: '야미',
+      to: { x: 7.5, z: 3.5 },
+      narration: '야미가 예약해 둔 책을 픽업하러 서점에 가고 있네요.' },
+    { id: 'd1_s2_yami_cam',  at: 0.82, type: 'camera', npc: '야미' },
+
+    // 장면 3 (0.88 ~ 0.94): 차카가 서점 근처에서 서성임 + 카메라 차카
+    // (이 시점에 카메라가 차카로 전환되므로 야미의 서점 도착 모습은 화면 밖)
+    { id: 'd1_s3_chaka_move', at: 0.88, type: 'move', npc: '차카',
+      to: { x: 5, z: 4 },
+      narration: '차카는 동네의 야경을 카메라로 담고 있어요.' },
+    { id: 'd1_s3_chaka_cam',  at: 0.88, type: 'camera', npc: '차카' },
+
+    // 장면 4 (0.94 ~ 1.00): 차카가 서점 앞으로 이동해서 멈춤 + 카메라 유지
+    { id: 'd1_s4_chaka_stop', at: 0.94, type: 'move', npc: '차카',
+      to: { x: 6, z: 3.2 },
+      narration: '서점과 동네의 풍경을 담았어요.' },
+    { id: 'd1_s4_chaka_cam',  at: 0.94, type: 'camera', npc: '차카' },
+
+    // 장면 5 (1.00 ~ 1.06): 야미가 서점에서 나와 광장으로 이동 + 카메라 야미
+    { id: 'd1_s5_yami_home',  at: 1.00, type: 'move', npc: '야미',
+      to: { x: 0, z: 0 },
+      narration: '야미가 예약한 책을 픽업해서 집으로 돌아가요.' },
+    { id: 'd1_s5_yami_cam',   at: 1.00, type: 'camera', npc: '야미' },
+
+    // 장면 종료
+    { id: 'd1_end', at: 1.06, type: 'end' },
   ],
-  // Day 2, 3 밤은 4단계에서 추가
+  // Day 2, 3 밤은 별도 카테고리에서 다룸
 };
 
 function showNotification(msg) {
@@ -236,6 +261,8 @@ function startSleepSequence() {
     sim.eventsFired = new Set();
     sim.cameraMode = 'cinematic';
     sim.cinematicTarget = null;
+    // [카테고리 1 수정] Day 1 은 느긋하게 (4초 간격 연출 설계), 그 외엔 기본 3배속
+    sim.speed = (state.day === 1) ? 1 : 3;
     
     // 3) 현재 시각을 "저녁 시작"으로 맞춤 (0.75 부근부터 스크립트 진행)
     state.timeOfDay = 0.74;
