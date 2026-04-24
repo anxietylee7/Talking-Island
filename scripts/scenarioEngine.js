@@ -378,6 +378,11 @@
     // 후속 이벤트가 풀릴 수 있으므로 activeEvents 재계산
     manageActiveEvents();
 
+    // [카테고리 1 신규] 이벤트가 하나라도 발동됐으면 배너 재평가 (byEventCompleted 반영)
+    if (firedIds.length > 0 && typeof renderQuestBanner === 'function') {
+      try { renderQuestBanner(); } catch (e) { /* ignore */ }
+    }
+
     return firedIds;
   }
 
@@ -648,6 +653,30 @@
           console.warn('[engine][ui-queue] showStoryModal 함수 없음');
           _showNextUi();
         }
+      } else if (next.kind === 'reports') {
+        // [카테고리 1 신규] Day 2 아침 "어젯밤의 소식" 팝업.
+        // state.reports 배열의 모든 항목을 텍스트로 이어붙여 showStoryModal 로 표시.
+        try {
+          let body = next.bodyIntro ? next.bodyIntro + '\n\n' : '';
+          if (typeof state !== 'undefined' && state && Array.isArray(state.reports) && state.reports.length > 0) {
+            body += state.reports.map(function (r) {
+              const npcName = (state.npcs.find(function (n) { return n.id === r.aboutNpcId; }) || {}).name
+                              || (r.npcName || '');
+              const prefix = npcName ? '📋 ' + npcName + ': ' : '📋 ';
+              return prefix + (r.publicSummary || r.text || '(내용 없음)');
+            }).join('\n\n');
+          } else {
+            body += '(특별한 소식은 없었어요.)';
+          }
+          if (typeof showStoryModal === 'function') {
+            showStoryModal(next.title || '📜 어젯밤의 소식', body);
+          } else {
+            _showNextUi();
+          }
+        } catch (err) {
+          console.error('[engine][ui-queue] reports 렌더 에러:', err);
+          _showNextUi();
+        }
       } else {
         console.warn('[engine][ui-queue] 알 수 없는 kind:', next.kind);
         _showNextUi();
@@ -683,7 +712,8 @@
       window.__closeStoryModal = function () {
         try { origCloseStory.apply(this, arguments); }
         catch (e) { console.error('[engine][ui-queue] origCloseStory 에러:', e); }
-        if (_uiQueue.current && _uiQueue.current.kind === 'story') {
+        // story 또는 reports 큐 항목이면 다음 큐로 진행
+        if (_uiQueue.current && (_uiQueue.current.kind === 'story' || _uiQueue.current.kind === 'reports')) {
           _uiQueue.current = null;
           _showNextUi();
         }
@@ -747,6 +777,36 @@
             // [6단계 변경] 직접 호출 대신 큐에 넣음 (동시 발동 시 순차 표시 보장).
             _enqueueUi({ kind: 'story', title: fx.title || '', body: fx.body || '' });
             log.push({ type: fx.type, title: fx.title, status: 'queued' });
+            break;
+
+          case 'moveNpc':
+            // [카테고리 1 신규] NPC 를 특정 좌표로 순간이동시킨다.
+            // 씬 쪽 spawnNpcMesh / npcMeshes 를 건드려야 하므로 scene.js 의 헬퍼에 위임.
+            // 헬퍼가 없으면 state.npcs[i].location 만 업데이트 (폴백).
+            if (fx.npcId && fx.to && typeof fx.to.x === 'number' && typeof fx.to.z === 'number') {
+              let moved = false;
+              try {
+                if (typeof window !== 'undefined' && typeof window.__teleportNpc === 'function') {
+                  window.__teleportNpc(fx.npcId, fx.to.x, fx.to.z);
+                  moved = true;
+                }
+              } catch (e) { console.warn('[engine][effect] moveNpc 헬퍼 에러:', e); }
+              log.push({ type: fx.type, npcId: fx.npcId, to: fx.to, status: moved ? 'ok' : 'no_helper' });
+            } else {
+              log.push({ type: fx.type, status: 'invalid' });
+            }
+            break;
+
+          case 'showReportsModal':
+            // [카테고리 1 신규] 현재 state.reports 전체를 한 번에 모달로 보여준다.
+            // (리포트 탭과 별개. 아침 진입 직후 "어젯밤의 소식" 팝업용.)
+            // UI 큐에 넣어 다른 팝업들과 순서 경쟁 없게.
+            _enqueueUi({
+              kind: 'reports',
+              title: fx.title || '📜 어젯밤의 소식',
+              bodyIntro: fx.bodyIntro || '',
+            });
+            log.push({ type: fx.type, status: 'queued' });
             break;
 
           case 'addRumor':
@@ -1277,8 +1337,19 @@
       }
     } catch (err) { /* ignore */ }
 
-    // 텍스트 선택: byMilestoneCount 가 있으면 우선, 없으면 default
+    // 텍스트 선택: 
+    //   우선순위 1. byEventCompleted 에 매칭되는 완료 이벤트가 있으면 그 텍스트 [카테고리 1 신규]
+    //   우선순위 2. byMilestoneCount 의 해당 개수 키가 있으면 그 텍스트
+    //   우선순위 3. default
     let text = stageBanners.default || '';
+    if (stageBanners.byEventCompleted && typeof stageBanners.byEventCompleted === 'object') {
+      // completedEvents 는 Set. 배너 정의 순서대로 훑으며 가장 "마지막" 매칭을 택함 (후속 이벤트가 우선).
+      for (const [eventId, bannerText] of Object.entries(stageBanners.byEventCompleted)) {
+        if (engineState.completedEvents && engineState.completedEvents.has(eventId)) {
+          text = bannerText;
+        }
+      }
+    }
     if (stageBanners.byMilestoneCount && stageBanners.byMilestoneCount[achieved]) {
       text = stageBanners.byMilestoneCount[achieved];
     }
