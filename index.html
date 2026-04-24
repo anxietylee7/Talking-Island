@@ -61,17 +61,31 @@
     <div class="section-title">🐾 주민들</div>
   </div>
   <div id="npc-list"></div>
-  <button class="btn btn-night" id="night-btn">🌙 밤으로 → 다음 날</button>
+  <!-- [피드백] "밤으로" 버튼 제거됨. 유저가 집 안 침대를 클릭해야 밤으로 진입. -->
 </div>
 
 <div id="right-panel" class="panel">
   <div class="tab-bar">
-    <button data-tab="chat" class="active">💬 대화</button>
-    <button data-tab="report">📜 리포트</button>
+    <!-- [피드백] "대화" 탭 제거됨. NPC 클릭으로 zeta 대화창이 바로 열리므로
+         별도 대화 탭이 불필요. 과거 대화 이력은 ESC 키로 별도 메뉴 호출. -->
+    <button data-tab="report" class="active">📜 리포트</button>
     <button data-tab="board">📢 소문</button>
     <button data-tab="quest">📖 퀘스트<span class="dot" id="quest-dot" style="display:none"></span></button>
   </div>
   <div class="content-area" id="tab-content"></div>
+</div>
+
+<!-- [피드백] ESC 키로 열리는 대화 이력 오버레이.
+     NPC별 최근 대화 스니펫을 보여주고 클릭하면 해당 NPC zeta 대화창 열림. -->
+<div id="chat-history-overlay" class="overlay-panel" style="display:none">
+  <div class="overlay-inner">
+    <div class="overlay-header">
+      <span class="overlay-title">💬 대화 이력</span>
+      <button id="chat-history-close" class="overlay-close">✕</button>
+    </div>
+    <div id="chat-history-list" class="overlay-list"></div>
+    <div class="overlay-hint">ESC 로 닫기</div>
+  </div>
 </div>
 
 <div id="notification"></div>
