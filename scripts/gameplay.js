@@ -28,9 +28,10 @@ function selectNpc(npcId) {
     return;
   }
   
-  // 일반 NPC는 기존 사이드 패널 채팅
+  // 일반 NPC는 기존 사이드 패널 채팅 (현재 게임엔 일반 NPC 없지만 안전망)
+  // [피드백] 'chat' 탭 제거됨 → 'report' 로 폴백.
   state.selectedNpcId = npcId;
-  state.activeTab = 'chat';
+  state.activeTab = 'report';
   renderNpcList();
   renderTabs();
   renderContent();
@@ -491,6 +492,57 @@ function renderTabs() {
     b.classList.toggle('active', b.dataset.tab === state.activeTab);
   });
 }
+
+// [피드백] ESC 로 열리는 대화 이력 오버레이 렌더.
+//   NPC 별 최근 대화 스니펫을 카드로 보여주고 클릭하면 해당 NPC zeta 대화창 오픈.
+function renderChatHistoryOverlay() {
+  const listEl = document.getElementById('chat-history-list');
+  if (!listEl) return;
+
+  // NPC 카드 목록 (현재 등장한 NPC 전부, chatHistory 있는 순서로)
+  const rows = state.npcs.map(function (npc) {
+    const history = state.chatHistory[npc.id] || [];
+    const lastMsg = history.length > 0 ? history[history.length - 1] : null;
+    const snippet = lastMsg
+      ? (lastMsg.role === 'user' ? '나: ' : '') + (lastMsg.text || '').slice(0, 40)
+      : '아직 대화한 적이 없어요';
+    return {
+      npc: npc,
+      turnCount: history.length,
+      snippet: snippet,
+    };
+  });
+
+  // 대화 많은 순으로 정렬
+  rows.sort(function (a, b) { return b.turnCount - a.turnCount; });
+
+  listEl.innerHTML = rows.map(function (r) {
+    return '<div class="overlay-row" data-npc-id="' + r.npc.id + '">' +
+      '<div class="overlay-row-head">' +
+        '<span class="overlay-row-emoji">' + (r.npc.emoji || '👤') + '</span>' +
+        '<span class="overlay-row-name">' + escapeHtml(r.npc.name) + '</span>' +
+        '<span class="overlay-row-count">' + (r.turnCount > 0 ? r.turnCount + '턴' : '—') + '</span>' +
+      '</div>' +
+      '<div class="overlay-row-snippet">' + escapeHtml(r.snippet) + '</div>' +
+    '</div>';
+  }).join('');
+
+  // 각 행 클릭 → zeta 대화창 오픈
+  listEl.querySelectorAll('.overlay-row').forEach(function (el) {
+    el.addEventListener('click', function () {
+      const npcId = el.dataset.npcId;
+      // 오버레이 닫기
+      const ov = document.getElementById('chat-history-overlay');
+      if (ov) ov.style.display = 'none';
+      // 해당 NPC zeta 대화창 열기
+      if (typeof openZeta === 'function') {
+        try { openZeta(npcId); } catch (err) { console.warn('[overlay] openZeta 실패', err); }
+      }
+    });
+  });
+}
+// 전역 노출 (main.js 에서 호출)
+window.renderChatHistoryOverlay = renderChatHistoryOverlay;
 
 function renderContent() {
   const el = document.getElementById('tab-content');
