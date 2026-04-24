@@ -2537,13 +2537,55 @@ renderer.domElement.addEventListener('click', e => {
   }
   
   // 2) 건물 클릭 체크 — 근접 시 진입, 멀면 자동 접근
+  //
+  // [피드백 #2] 사진관 클릭 특수 처리 —
+  //   Day 2 낮 시뮬 A(차카-밤톨 사진관 앞 대화) 의 트리거는 현재 "차카 approach".
+  //   사용자 요청: "건물(사진관) 클릭"으로도 시뮬 발동.
+  //   구현: 사진관 클릭 시, "시뮬 A 가 아직 발동 안 된 상태(triggered stage) + 차카 접근
+  //         이벤트가 아직 완료 안 됨" 이면 인테리어 진입 대신 차카 approach 로직 실행.
+  //         유저 mesh 를 사진관 문 앞까지 이동시킨 뒤, 도착 시 selectNpc('chaka').
+  //         이미 시뮬을 본 뒤엔 (completedEvents 에 'chaka_shows_night_photo' 있음)
+  //         기존처럼 인테리어 진입으로 폴백.
   const buildingHits = raycaster.intersectObjects(buildings, true);
   if (buildingHits.length > 0) {
     let obj = buildingHits[0].object;
     while (obj && obj.userData?.type !== 'building') obj = obj.parent;
     if (obj && obj.userData?.loc) {
       const loc = obj.userData.loc;
-      // 문이 있으면 문으로, 없으면 건물 중심 (유저 집은 문이 있어도 건물 중심으로 처리하면 충돌)
+      // [피드백 #2] 사진관 클릭이고 차카 시뮬 조건이 맞으면 차카 approach 로 리다이렉트.
+      let redirectedToChakaApproach = false;
+      if (loc.interior === 'photostudio'
+          && window.scenarioEngine
+          && window.scenarioEngine.currentStage === 'triggered'
+          && window.scenarioEngine.state
+          && window.scenarioEngine.state.completedEvents
+          && !window.scenarioEngine.state.completedEvents.has('chaka_shows_night_photo')) {
+        const entryX = loc.door ? loc.door.x : loc.x;
+        const entryZ = loc.door ? loc.door.z : loc.z;
+        if (state.user.mesh) {
+          const dist = Math.hypot(
+            entryX - state.user.mesh.position.x,
+            entryZ - state.user.mesh.position.z
+          );
+          if (dist <= 1.2) {
+            // 이미 문 근처 → 바로 차카 approach (시뮬 시작)
+            if (typeof selectNpc === 'function') selectNpc('chaka');
+          } else {
+            showNotification('🚪 사진관으로 이동 중...');
+            moveUserTo(entryX, entryZ, {
+              stopDistance: 0.5,
+              onArrive: () => {
+                if (typeof selectNpc === 'function') selectNpc('chaka');
+              },
+            });
+          }
+        }
+        redirectedToChakaApproach = true;
+      }
+
+      if (redirectedToChakaApproach) return;
+
+      // 기존 로직: 문이 있으면 문으로, 없으면 건물 중심
       const entryX = loc.door ? loc.door.x : loc.x;
       const entryZ = loc.door ? loc.door.z : loc.z;
       if (state.user.mesh) {
