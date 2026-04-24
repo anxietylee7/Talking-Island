@@ -386,9 +386,18 @@ window.BOOKSTORE_SCENARIO = {
         //   openZetaNpcId 생략 — 컷신 끝나도 대화창 자동 오픈 없이 낮 탐색 복귀.
         //   이후 유저가 야미에게 접근하면 아래 yami_seeks_user 가 발동.
         //
+        // [피드백 #1 재추가] 사용자 요청: 야미-밤톨 대화 컷신 전에 포스터 팝업이 떠야 함.
+        //   효과 순서:
+        //     1) showEvidencePopup (포스터) — 독서 모임 예고 이미지/캡션 먼저 보여줌
+        //     2) playCutscene — 팝업 닫은 뒤 컷신 재생 (시뮬 A 의 UI 큐 대기 메커니즘이
+        //        자동으로 팝업 닫힘을 기다려준 뒤 컷신 시작)
+        //     3) setFlag — 컷신 이후 야미 말풍선 활성화
+        //
         // [Tier 2 #12 연동] setFlag 'yami_needs_help' — 야미 머리 위
         //   "나 좀 도와줘" 말풍선 상시 표시용. scene.js 렌더 루프가 이 플래그를 감시.
         effects: [
+          { type: 'showEvidencePopup', assetKey: 'bookclub_poster',
+            caption: '"첫 모임 — 함께 읽을까요?"' },
           { type: 'playCutscene', cutsceneId: 'yami_at_bookstore' },
           { type: 'setFlag', key: 'yami_needs_help' },
         ],
