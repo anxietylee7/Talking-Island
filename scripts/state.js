@@ -411,11 +411,14 @@ const ENDING_SCRIPTS = {
 
 const CUTSCENE_SCRIPTS = {
   chaka_bamtol_photo_confrontation: [
+    // [피드백 #2] NPC 좌표 수정 — 이전 버전은 벽 경계 위 (-6.5, -5) / (-8, -4.5) 라
+    //   건물(-8,-6 / 3×3) 외벽에 박힘. 사진관 문 (-8, -3.5) 앞 광장 쪽으로 재배치.
+    //   차카는 사진관 문 바로 앞, 밤톨은 약간 측면 (대화 구도).
     // 장면 0 (0): NPC 배치 + 카메라. 페이드 중이라 유저에겐 안 보임.
     { id: 'c1_s0_show_bamtol', at: 0, type: 'show', npc: '밤톨',
-      position: { x: -6.5, z: -5 } },
+      position: { x: -6.5, z: -2.5 } },
     { id: 'c1_s0_show_chaka', at: 0, type: 'show', npc: '차카',
-      position: { x: -8, z: -4.5 } },
+      position: { x: -8, z: -2.5 } },
     { id: 'c1_s0_cam', at: 0, type: 'camera', npc: '차카' },
 
     // 장면 1 (0.02~): 밤톨이 먼저 말을 건넴
@@ -482,8 +485,14 @@ const CUTSCENE_SCRIPTS = {
   //
   // 좌표:
   //   서점 (8, 6), 문 (8, 3.5)
-  //   야미 배치: (8, 2.5) — 문 앞
-  //   밤톨 배치: (8, 3.5) — 문가 (나올 때)
+  // 좌표:
+  //   서점 (8, 6), 문 (8, 3.5)
+  //   [피드백 #4] 좌표 조정 — 이전 야미(8, 2.5) + 밤톨(8, 3.5) 는
+  //     X 같고 Z 1유닛 차이. 화면상 둘이 붙어 말풍선 겹침 (Image 3).
+  //     또 밤톨 (8, 3.5) 는 정확히 문 좌표라 문에 박힘.
+  //     수정: 야미는 문 옆으로 옆 (왼쪽), 밤톨은 문 바로 앞. X 방향으로 벌어짐.
+  //   야미 배치: (6.5, 2.5) — 문 왼쪽 앞 (서점 정면 왼쪽)
+  //   밤톨 배치: (8, 2.5) — 문 정면에서 약간 앞으로 (문이 3.5, 밤톨이 2.5 = 1유닛 앞)
   yami_at_bookstore: [
     // [피드백] 타이밍 재조정:
     //   이전: at 0.02 에 narration → 페이드 인 전에 뜸. 화면-대사 빗나감.
@@ -493,7 +502,7 @@ const CUTSCENE_SCRIPTS = {
 
     // 장면 0 (0): 야미 등장 + 카메라 고정. 페이드 인 시작.
     { id: 'c2_s0_show_yami', at: 0, type: 'show', npc: '야미',
-      position: { x: 8, z: 2.5 } },
+      position: { x: 6.5, z: 2.5 } },
     { id: 'c2_s0_cam', at: 0, type: 'camera', npc: '야미' },
 
     // 장면 1 (0.05~, 약 1.67초): 야미가 포스터 꺼냄. 페이드 끝난 뒤 충분히 뜸 두고 나레이션.
@@ -506,7 +515,7 @@ const CUTSCENE_SCRIPTS = {
 
     // 장면 2b (0.17~, 약 5.67초): 밤톨 등장. narration 약간 뒤에 show — 순간 텔레포트 느낌 완화.
     { id: 'c2_s2b_show_bamtol', at: 0.17, type: 'show', npc: '밤톨',
-      position: { x: 8, z: 3.5 } },
+      position: { x: 8, z: 2.5 } },
 
     // 장면 3 (0.22~, 약 7.3초): 야미가 조심스럽게 말 꺼냄.
     { id: 'c2_s3_yami', at: 0.22, type: 'bubble', npc: '야미',
@@ -626,10 +635,18 @@ window.__showNewsModal = showNewsModal;
 //   showConfirmModal 은 예/아니오 두 버튼 구조라 단일 알림엔 부적합.
 //   showStoryModal 은 콜백 없음.
 //   이 함수는 둘 사이의 틈을 메움: 단일 버튼 + 콜백.
+//
+// [피드백 #6] state.endingPreviewPending = true 세팅 → selectNpc 에서 대화창 차단.
+//   이유: yami approach → handleNpcApproach → ending effect → 여기 도달.
+//         팝업 떠있는 동안 sim.active 는 false 라 selectNpc 가 openZeta 를 호출.
+//         플래그로 차단. 확인 누르면 해제 + startSim 호출 (sim.active=true 로 전환됨).
 function showEndingPreviewModal(title, body, onConfirm) {
   // 기존 모달 정리
   const existing = document.getElementById('ending-preview-modal');
   if (existing) existing.remove();
+
+  // 대화창 차단 플래그 세팅
+  state.endingPreviewPending = true;
 
   const modal = document.createElement('div');
   modal.id = 'ending-preview-modal';
@@ -657,12 +674,80 @@ function showEndingPreviewModal(title, body, onConfirm) {
   const btn = document.getElementById('ending-preview-ok');
   btn.addEventListener('click', function () {
     modal.remove();
+    // 확인 눌렀으니 플래그 해제. onConfirm 내에서 startEndingSimulation 이 호출되면
+    // sim.active=true 가 되므로 selectNpc 차단은 sim.active 쪽이 담당.
+    state.endingPreviewPending = false;
     if (typeof onConfirm === 'function') {
       try { onConfirm(); } catch (err) { console.error('[ending preview] onConfirm 오류:', err); }
     }
   });
 }
 window.showEndingPreviewModal = showEndingPreviewModal;
+
+// [피드백] 엔딩 에필로그 모달 — 시뮬이 끝나고 페이드 인 된 뒤 표시되는 마무리 메시지.
+//   분기(High/Low)에 따라 문구와 톤이 다름.
+//     High — 밤톨이 대화로 설득된 경로. 따뜻한 마무리.
+//     Low  — 밤톨은 증거로만 겨우 인정. 여운이 남는 마무리.
+//   닫기 버튼: 단일 "고마워요" 버튼. 모달 DOM 은 닫으면 제거.
+//   디자인: showEndingPreviewModal 과 같은 구조 재활용 + 배경 그라데이션만 톤 다르게.
+function showEndingEpilogueModal(branchKey) {
+  // 기존 모달 정리
+  const existing = document.getElementById('ending-epilogue-modal');
+  if (existing) existing.remove();
+
+  // 분기별 문구
+  let title, body, accentGradient;
+  if (branchKey === 'high') {
+    title = '🎉 이야기가 마무리되었어요';
+    body =
+      '야미의 오해를 풀어주었어요.\n\n' +
+      '밤톨 사장님과 야미가 다시 차근차근 대화를 이어갈 수 있게 됐고,\n' +
+      '야미의 독서 모임도 곧 서점에서 열릴 거예요.';
+    accentGradient = 'linear-gradient(135deg, #ffd980 0%, #ffa76b 100%)';
+  } else {
+    // low (또는 알 수 없는 branch → 기본값)
+    title = '🌙 이야기가 마무리되었어요';
+    body =
+      '야미의 오해를 풀어주었어요.\n\n' +
+      '밤톨 사장님의 마음에는 아직 앙금이 조금 남아 있지만,\n' +
+      '책 한 권의 자리는 되찾았어요. 야미의 독서 모임도 다시 시작될 거예요.';
+    accentGradient = 'linear-gradient(135deg, #b8a0d8 0%, #7c94c7 100%)';
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'ending-epilogue-modal';
+  modal.style.cssText =
+    'position: fixed; inset: 0; z-index: 660;' +
+    'background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);' +
+    'display: flex; align-items: center; justify-content: center; padding: 20px;';
+  modal.innerHTML =
+    '<div style="background: white; border-radius: 28px; padding: 32px 28px; max-width: 460px; width: 100%; ' +
+         'box-shadow: 0 24px 70px rgba(0,0,0,0.3); border: 3px solid #fff2e8; text-align: center;">' +
+      '<h2 style="margin: 0 0 16px; font-size: 22px; color: #3a2a1a; font-weight: 800;">' +
+        String(title).replace(/</g, '&lt;') +
+      '</h2>' +
+      '<p style="margin: 0 0 26px; line-height: 1.75; color: #555; white-space: pre-line; font-size: 14px;">' +
+        String(body).replace(/</g, '&lt;') +
+      '</p>' +
+      '<div style="display: flex; justify-content: center;">' +
+        '<button id="ending-epilogue-ok" style="padding: 12px 36px; border: none; ' +
+          'background: ' + accentGradient + '; color: white; ' +
+          'border-radius: 999px; cursor: pointer; font-size: 14px; font-weight: 700; ' +
+          'box-shadow: 0 6px 16px rgba(0,0,0,0.12); transition: transform 0.15s;">' +
+          '고마워요' +
+        '</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  const btn = document.getElementById('ending-epilogue-ok');
+  btn.addEventListener('mouseenter', function () { this.style.transform = 'scale(1.04)'; });
+  btn.addEventListener('mouseleave', function () { this.style.transform = 'scale(1)'; });
+  btn.addEventListener('click', function () {
+    modal.remove();
+  });
+}
+window.showEndingEpilogueModal = showEndingEpilogueModal;
 
 // =========================================================
 // 확인 모달 (예/아니오 선택)
@@ -1057,28 +1142,59 @@ function runCutscenePostEffects() {
 }
 
 // 시뮬레이션 UI (배속 표시 + 스킵 버튼 + 이벤트 알림)
+// [피드백 #1] 시뮬 UI 가독성 개선.
+//   이전: 한 줄 pill 형태로 "🌙 밤 · 나레이션 · 건너뛰기" 가로 배치.
+//         나레이션이 길면 옆으로 퍼지거나, 짧으면 중앙 정렬이 비좁아 보임. 글자 작음.
+//   수정: 2단 구조.
+//     상단(얇은 pill): "🌙 밤 · [장면]" 라벨 + 오른쪽에 건너뛰기 버튼.
+//     하단(넓은 박스): 나레이션 전용. 크게 + 충분한 폭 + 어두운 배경에 크림색 글자.
+//   하단 박스는 내용이 있을 때만 표시. 빈 상태에선 접힘.
 function showSimulationUI() {
   let ui = document.getElementById('simulation-ui');
   if (ui) ui.remove();
   ui = document.createElement('div');
   ui.id = 'simulation-ui';
-  ui.style.cssText = `
-    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-    z-index: 9999; display: flex; align-items: center; gap: 12px;
-    background: rgba(20, 20, 30, 0.85); color: white; padding: 10px 18px;
-    border-radius: 999px; font-size: 14px; backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.15);
-  `;
-  ui.innerHTML = `
-    <span style="display:flex; align-items:center; gap:6px;">🌙 <span id="sim-phase-label">밤이 깊어가요</span></span>
-    <span style="opacity:0.4;">·</span>
-    <span id="sim-event-label" style="color:#ffd4a0; min-width: 140px; text-align:center; transition:opacity 0.3s;"></span>
-    <span style="opacity:0.4;">·</span>
-    <button id="sim-skip-btn" style="background:#4a4a5a; border:none; color:white; padding:6px 14px; border-radius:999px; cursor:pointer; font-size:13px;">⏭ 건너뛰기</button>
-  `;
+  ui.style.cssText = [
+    'position: fixed; top: 18px; left: 50%; transform: translateX(-50%);',
+    'z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px;',
+    'pointer-events: none;'
+  ].join(' ');
+  ui.innerHTML = [
+    // 상단 pill — 상태 + 건너뛰기
+    '<div id="sim-top-row" style="display:flex; align-items:center; gap:10px;',
+      'background: rgba(20, 20, 30, 0.88); color:white; padding:8px 14px;',
+      'border-radius:999px; font-size:13px; backdrop-filter: blur(8px);',
+      'border:1px solid rgba(255,255,255,0.15); pointer-events:auto;',
+      'box-shadow: 0 4px 16px rgba(0,0,0,0.25);">',
+      '<span style="display:flex; align-items:center; gap:6px; font-weight:600;">',
+        '<span id="sim-phase-icon">🌙</span>',
+        '<span id="sim-phase-label" style="opacity:0.9">장면</span>',
+      '</span>',
+      '<button id="sim-skip-btn" style="background:rgba(255,255,255,0.14); border:none; color:white;',
+        'padding:5px 12px; border-radius:999px; cursor:pointer; font-size:12px; font-weight:600;',
+        'transition: background 0.15s;">⏭ 건너뛰기</button>',
+    '</div>',
+    // 하단 나레이션 박스 — 내용 있을 때만 표시
+    '<div id="sim-event-box" style="max-width: 540px; width: min(540px, 80vw);',
+      'background: linear-gradient(180deg, rgba(40, 35, 30, 0.92) 0%, rgba(25, 22, 30, 0.92) 100%);',
+      'color: #ffe8c8; padding: 14px 22px; border-radius: 14px; font-size: 15px;',
+      'line-height: 1.5; font-weight: 500; text-align: center;',
+      'border: 1px solid rgba(255, 220, 170, 0.25); backdrop-filter: blur(10px);',
+      'box-shadow: 0 6px 20px rgba(0,0,0,0.3);',
+      'transition: opacity 0.3s, transform 0.3s;',
+      'opacity: 0; transform: translateY(-4px); display: none; pointer-events: auto;">',
+      '<span id="sim-event-label"></span>',
+    '</div>'
+  ].join('');
   document.body.appendChild(ui);
   document.getElementById('sim-skip-btn').addEventListener('click', () => {
     endSimulation();
+  });
+  document.getElementById('sim-skip-btn').addEventListener('mouseenter', function () {
+    this.style.background = 'rgba(255,255,255,0.22)';
+  });
+  document.getElementById('sim-skip-btn').addEventListener('mouseleave', function () {
+    this.style.background = 'rgba(255,255,255,0.14)';
   });
   // UI 잠금 (사이드 패널 클릭 비활성화)
   document.body.classList.add('sim-locked');
@@ -1091,13 +1207,39 @@ function hideSimulationUI() {
   document.body.classList.remove('sim-locked');
 }
 
+// [피드백 #1] 나레이션 박스 전용 페이드 처리.
+//   빈 텍스트면 박스 전체 hide.
 function setSimulationEventLabel(text) {
+  const box = document.getElementById('sim-event-box');
   const el = document.getElementById('sim-event-label');
-  if (!el) return;
-  el.style.opacity = '0';
-  setTimeout(() => {
-    el.textContent = text || '';
-    el.style.opacity = '1';
+  if (!el || !box) return;
+
+  const newText = (text || '').trim();
+
+  // 현재 보이던 것에서 다른 텍스트로 바뀌면 페이드 재생.
+  if (!newText) {
+    // hide
+    box.style.opacity = '0';
+    box.style.transform = 'translateY(-4px)';
+    setTimeout(function () {
+      // 중간에 새 텍스트 들어오면 덮어씌워짐 — 안전망.
+      if (box.style.opacity === '0') box.style.display = 'none';
+      el.textContent = '';
+    }, 300);
+    return;
+  }
+
+  // 이전 내용 페이드 아웃 → 새 내용 페이드 인
+  box.style.opacity = '0';
+  box.style.transform = 'translateY(-4px)';
+  setTimeout(function () {
+    el.textContent = newText;
+    box.style.display = 'block';
+    // display 전환 직후 reflow 유도 후 opacity 적용 (transition 타이밍 확보)
+    requestAnimationFrame(function () {
+      box.style.opacity = '1';
+      box.style.transform = 'translateY(0)';
+    });
   }, 150);
 }
 
@@ -1306,12 +1448,21 @@ function runSimulationTick(dt) {
     state.phase = 'night';
   }
 
-  // phase 라벨 업데이트 (모드별 분기)
+  // phase 라벨 업데이트 (모드별 분기).
+  // [피드백 #1] icon 과 label 분리됨 — 이모지는 icon 엘리먼트, 텍스트는 label 엘리먼트.
   const phaseLabel = document.getElementById('sim-phase-label');
+  const phaseIcon = document.getElementById('sim-phase-icon');
   if (phaseLabel) {
-    if (sim.mode === 'ending')       phaseLabel.textContent = '✨ 엔딩';
-    else if (sim.mode === 'cutscene') phaseLabel.textContent = '🎬 장면';
-    else                              phaseLabel.textContent = '🌙 밤';
+    if (sim.mode === 'ending') {
+      phaseLabel.textContent = '엔딩';
+      if (phaseIcon) phaseIcon.textContent = '✨';
+    } else if (sim.mode === 'cutscene') {
+      phaseLabel.textContent = '장면';
+      if (phaseIcon) phaseIcon.textContent = '🎬';
+    } else {
+      phaseLabel.textContent = '밤';
+      if (phaseIcon) phaseIcon.textContent = '🌙';
+    }
   }
 
   // 2) 스크립트 이벤트 체크
@@ -1420,6 +1571,11 @@ function endSimulation() {
   // [시뮬 C] mode 별 종료 경로 분기.
   if (endedMode === 'ending') {
     // 엔딩 시뮬 종료 — 페이드 후 엔딩 post-effects(팝업/호감도) 실행하고 낮으로 복귀.
+    // [피드백] 엔딩 완료 후 에필로그 모달 표시 — High/Low 분기별 다른 메시지.
+    //   시점: 페이드 아웃 → post-effects 실행 → 페이드 인 → 잠깐 뒤 모달.
+    //   이유: 유저가 연출 끝나고 화면 복귀한 직후 "이야기가 끝났다" 는 마무리가 필요.
+    //         호감도 반영(post-effects)까지 끝난 뒤 모달이 떠야 UI 상 깔끔.
+    const endedBranch = sim.endingBranch; // null 로 리셋되기 전 캡처
     fadeToBlack(1000, () => {
       // 카메라 기본 위치로
       cameraAngle = Math.PI / 4;
@@ -1440,6 +1596,15 @@ function endSimulation() {
 
       // 페이드 인 (낮 자유 탐색 복귀)
       setTimeout(() => fadeFromBlack(1200), 300);
+
+      // [피드백] 에필로그 모달 — 페이드 인 마무리될 즈음 표시.
+      //   페이드 인(1200ms) + 300ms 지연 = 1500ms 후쯤 뜨게 함. 유저가 화면 복귀를
+      //   인식한 직후 자연스럽게 마무리 메시지.
+      setTimeout(() => {
+        if (typeof showEndingEpilogueModal === 'function') {
+          showEndingEpilogueModal(endedBranch);
+        }
+      }, 1800);
     });
     return;
   }
