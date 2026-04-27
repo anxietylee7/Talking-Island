@@ -11,7 +11,7 @@ const STORY_NPCS = [
     color: 0xc9b892, // 따뜻한 베이지 (사진사 톤)
     trait: '신중', job: '동네 사진사', dream: '동네 사진집 출간',
     personality: '조용하고 관찰력이 좋으며, 말수가 적다',
-    speechHabit: '~네요', secretSkill: '풍경 사진',
+    speechHabit: '음...', secretSkill: '풍경 사진',
     level: 2, affinity: 40, dreamProgress: 45,
     isStory: true, isMain: true,
     homeLocation: 'photostudio',
@@ -21,8 +21,8 @@ const STORY_NPCS = [
     name: '야미', emoji: '📖',
     color: 0xf4c7a1, // 부드러운 살구색 (학생 톤)
     trait: '변덕', job: '문학도 학생', dream: '독서 모임 만들기',
-    personality: '조용하지만 좋아하는 책 얘기만 나오면 눈이 반짝거리는 책벌레',
-    speechHabit: '~지', secretSkill: '시 낭송',
+    personality: '책을 좋아하는 문학 소년. 하지만 성격이 늘 밝고 친절하여 마을 사람 모두가 좋아한다. 어떤 이야기든 호응을 잘 해주는 타입.',
+    speechHabit: '우와!', secretSkill: '시 낭송',
     level: 3, affinity: 45, dreamProgress: 60,
     isStory: true, isMain: true,
     homeLocation: 'outside',
@@ -32,8 +32,8 @@ const STORY_NPCS = [
     name: '밤톨', emoji: '📚',
     color: 0xd4a574, // 짙은 호박색 (서점 주인 톤)
     trait: '성실', job: '서점 주인', dream: '',
-    personality: '책을 사랑하고 원칙을 중시하며, 자기 서점에 대한 자부심이 크다',
-    speechHabit: '~는군', secretSkill: '고서 감정',
+    personality: '책을 사랑하고 원칙을 중시하며, 자기 서점에 대한 자부심이 크다. 고집이 세며 자기가 옳다고 믿는 성격. 단호하다.',
+    speechHabit: '', secretSkill: '고서 감정',
     level: 2, affinity: 35, dreamProgress: 0,
     isStory: true, isMain: true,
     homeLocation: 'bookstore',
