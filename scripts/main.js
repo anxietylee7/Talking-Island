@@ -87,6 +87,11 @@ window.__introRollGacha = async function() {
     
     // 진행도 업데이트
     document.getElementById('gacha-count').textContent = introDrawIndex;
+    // [옵션 C] 진행도 도트 — 채워진 만큼 .filled 클래스 부여 (CSS 가 처리).
+    document.querySelectorAll('.gacha-dot').forEach(function (dot, i) {
+      if (i < introDrawIndex) dot.classList.add('filled');
+      else dot.classList.remove('filled');
+    });
     
     // [가챠 5번째 특수] 5번째면 화면 어둡게 + 캡슐 글로우
     if (isFinal) {
