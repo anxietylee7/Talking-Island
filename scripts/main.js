@@ -45,16 +45,33 @@ window.__introRollGacha = async function() {
   btn.style.display = 'none';
   loading.classList.add('show');
   loading.style.display = 'flex';
-  capsule.classList.remove('popped');
-  capsule.classList.add('rolling');
+  
+  // 캡슐 상태 리셋
+  capsule.classList.remove('popped', 'rolling', 'rolling-soft', 'rolling-medium', 'rolling-strong', 'final-glow');
   capsule.textContent = '🎁';
   capsule.querySelectorAll('.gacha-sparkle').forEach(s => s.remove());
+  // 이전 5번째 스포트라이트 제거
+  document.body.classList.remove('gacha-final-spotlight');
   result.classList.remove('show');
   result.style.display = 'none';
   
+  // [가챠 추천 조합 #1] 떨림 강도 점진적 증가 — soft → medium → strong
+  //   각 단계는 약 350~450ms씩, 마지막 strong 에서 캡슐이 터지기 직전 격렬해짐.
+  capsule.classList.add('rolling-soft');
+  
   try {
-    // 연출용 딜레이 (0.9~1.3초 랜덤)
-    const delay = 900 + Math.random() * 400;
+    // 떨림 단계 전환 — 총 약 1.2초 후 결과
+    setTimeout(() => {
+      capsule.classList.remove('rolling-soft');
+      capsule.classList.add('rolling-medium');
+    }, 400);
+    setTimeout(() => {
+      capsule.classList.remove('rolling-medium');
+      capsule.classList.add('rolling-strong');
+    }, 800);
+    
+    // 연출용 딜레이 (1.1~1.3초) — 떨림 단계 전부 통과
+    const delay = 1100 + Math.random() * 200;
     await new Promise(r => setTimeout(r, delay));
     
     const npcTemplate = introDrawSequence[introDrawIndex];
@@ -64,15 +81,24 @@ window.__introRollGacha = async function() {
     };
     state.npcs.push(newNpc);
     introDrawIndex++;
+    const isFinal = (introDrawIndex === 5);
     
-    console.log('[intro] drew:', newNpc.name);
+    console.log('[intro] drew:', newNpc.name, isFinal ? '(FINAL)' : '');
     
     // 진행도 업데이트
     document.getElementById('gacha-count').textContent = introDrawIndex;
     
-    // UI 갱신 — 캡슐에 natural 이미지 표시 (없으면 이모지 폴백)
-    capsule.classList.remove('rolling');
+    // [가챠 5번째 특수] 5번째면 화면 어둡게 + 캡슐 글로우
+    if (isFinal) {
+      document.body.classList.add('gacha-final-spotlight');
+      capsule.classList.add('final-glow');
+    }
+    
+    // 떨림 클래스 전부 제거 후 pop
+    capsule.classList.remove('rolling', 'rolling-soft', 'rolling-medium', 'rolling-strong');
     capsule.classList.add('popped');
+    
+    // UI 갱신 — 캡슐에 natural 이미지 표시 (없으면 이모지 폴백)
     const naturalKey = `${newNpc.id}_natural`;
     const naturalImg = (window.PRELOADED_ASSETS || {})[naturalKey];
     if (naturalImg) {
@@ -83,25 +109,69 @@ window.__introRollGacha = async function() {
     loading.classList.remove('show');
     loading.style.display = 'none';
     
-    // 반짝이
-    for (let i = 0; i < 8; i++) {
+    // [가챠 추천 조합 #2] 꽃잎/별/하트 흩날림 — 14개, 더 멀리 (5번째는 18개)
+    //   동네 톤에 어울리는 이모지 혼합. 각도 균등 분포 + 약간의 랜덤성.
+    const particleCount = isFinal ? 18 : 14;
+    const particleEmojis = ['🌸', '🌼', '✨', '⭐', '💛', '🍃', '🌷', '💫'];
+    for (let i = 0; i < particleCount; i++) {
       const s = document.createElement('div');
       s.className = 'gacha-sparkle';
-      s.textContent = ['✨','⭐','💫','🌟'][i % 4];
-      const angle = (i / 8) * Math.PI * 2;
-      s.style.setProperty('--dx', Math.cos(angle) * 80 + 'px');
-      s.style.setProperty('--dy', Math.sin(angle) * 80 + 'px');
-      s.style.animationDelay = (i * 0.05) + 's';
+      s.textContent = particleEmojis[i % particleEmojis.length];
+      // 각도: 균등 분포 + 약간의 랜덤
+      const angle = (i / particleCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      // 거리: 100~140px (5번째는 130~170px 더 멀리)
+      const dist = isFinal ? (130 + Math.random() * 40) : (100 + Math.random() * 40);
+      s.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+      s.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+      s.style.animationDelay = (i * 0.04) + 's';
       capsule.appendChild(s);
     }
     
-    // 결과 카드 채우기 (species 표시 제거 — 이제 종족 개념 없음)
-    document.getElementById('result-name').textContent = newNpc.name;
+    // [가챠 추천 조합 #3] 이름 타이핑 — 한 글자씩 통통 등장
+    const nameEl = document.getElementById('result-name');
+    nameEl.innerHTML = '';
+    const chars = Array.from(newNpc.name);
+    chars.forEach((ch, i) => {
+      const span = document.createElement('span');
+      span.className = 'gacha-name-char';
+      span.textContent = ch;
+      span.style.animationDelay = (0.4 + i * 0.08) + 's';
+      nameEl.appendChild(span);
+    });
+    
+    // 카드 나머지 정보
     document.getElementById('result-species').textContent = newNpc.trait;
     document.getElementById('result-job').textContent = newNpc.job;
     document.getElementById('result-dream').textContent = newNpc.dream || '—';
     document.getElementById('result-personality').textContent = newNpc.personality;
-    document.getElementById('result-speech').textContent = `"${newNpc.speechHabit}"`;
+    document.getElementById('result-speech').textContent = newNpc.speechHabit ? `"${newNpc.speechHabit}"` : '—';
+    
+    // [가챠 추천 조합 #4] 별점 카운트업 — NPC.level 만큼 ★ 채움 (최대 3개 가정)
+    //   기존 species 표시(.result-species) 옆에 별점 inline 추가.
+    //   .gacha-stars 컨테이너를 찾거나 생성.
+    const starsHost = document.getElementById('gacha-stars-host');
+    if (starsHost) {
+      const total = 3;
+      const filled = Math.max(1, Math.min(total, newNpc.level || 1));
+      starsHost.innerHTML = '';
+      const wrap = document.createElement('span');
+      wrap.className = 'gacha-stars';
+      for (let i = 0; i < total; i++) {
+        const star = document.createElement('span');
+        star.className = 'gacha-star';
+        star.textContent = '★';
+        wrap.appendChild(star);
+      }
+      starsHost.appendChild(wrap);
+      // 0.6초부터 시작해 100ms 간격으로 하나씩 채우기 (이름 타이핑 끝난 직후)
+      const startDelay = 600 + chars.length * 80;
+      const stars = wrap.querySelectorAll('.gacha-star');
+      for (let i = 0; i < filled; i++) {
+        setTimeout(() => {
+          stars[i].classList.add('filled');
+        }, startDelay + i * 130);
+      }
+    }
     
     // 액션 버튼
     if (introDrawIndex < 5) {
@@ -118,7 +188,8 @@ window.__introRollGacha = async function() {
     console.error('[intro] fatal error:', err);
     loading.classList.remove('show');
     loading.style.display = 'none';
-    capsule.classList.remove('rolling');
+    capsule.classList.remove('rolling', 'rolling-soft', 'rolling-medium', 'rolling-strong', 'final-glow');
+    document.body.classList.remove('gacha-final-spotlight');
     btn.disabled = false;
     btn.style.display = 'inline-block';
     btn.textContent = '🎲 다시 시도';
