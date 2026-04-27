@@ -2018,34 +2018,99 @@ function openZeta(npcId) {
   //   (c) 그 외                              → "이전 대화 N건" 시스템 메시지 (이전 UI 재현 없음)
 
   if (history.length === 0) {
-    // (a) 첫 만남
+    // (a) 첫 만남 — [수정] 하드코딩 인사 대신 AI 가 페르소나 기반으로 첫 인사 생성.
+    //   흐름: 시스템 메시지 + 임시 "..." 풍선 표시 → AI 호출 → 응답 도착 시 풍선 교체.
+    //   AI 호출 실패 시 폴백 인사 사용 (네트워크 끊김 대비).
     const sys = document.createElement('div');
     sys.className = 'zeta-msg system';
     sys.textContent = `${npc.name}와의 첫 만남`;
     messagesEl.appendChild(sys);
     
-    // NPC별 첫 인사말 (말버릇 섞어서)
-    const greetings = {
+    // 임시 풍선 (감정 카드는 응답 도착 후 함께 표시)
+    const greetMsg = document.createElement('div');
+    greetMsg.className = 'zeta-msg npc';
+    greetMsg.textContent = '...';
+    messagesEl.appendChild(greetMsg);
+    
+    // 폴백 인사말 (AI 호출 실패 시 사용)
+    const fallbackGreetings = {
       'chaka': '어... 안녕하세요. 처음 뵙는 것 같네요.',
       'yami': '안녕! 너도 책 좋아하지?',
       'bamtol': '어서 오는군. 뭐 찾는 책이라도 있는군?',
       'luru': '어서 오세요! 오늘은 뭐 마실래요?',
       'somi': '안녕~ 오늘 동네 소식 들었음~?',
     };
-    const greeting = greetings[npcId] || `안녕! 반가워${npc.speechHabit || ''}`;
+    const fallbackGreeting = fallbackGreetings[npcId] || `안녕! 반가워${npc.speechHabit || ''}`;
     
-    // 인사말을 히스토리에 추가 (서버에 저장, 이후 대화 맥락으로 쓰임)
-    history = [{ role: 'npc', text: greeting, emotion: 'natural', shown: true }];
-    state.chatHistory[npcId] = history;
-
-    // UI 렌더
-    const emotion = 'natural';
-    appendInlineEmotionCard(npcId, emotion, messagesEl);
-    const greetMsg = document.createElement('div');
-    greetMsg.className = 'zeta-msg npc';
-    greetMsg.textContent = greeting;
-    messagesEl.appendChild(greetMsg);
-    state.chatHistory[`_emotion_${npcId}`] = emotion;
+    // AI 호출로 페르소나 기반 첫 인사 생성
+    (async function () {
+      let greetingText = fallbackGreeting;
+      try {
+        // 엔진 컨텍스트 (현재 단계의 NPC 배경) 주입
+        let engineCtx = '';
+        try {
+          if (window.scenarioEngine && typeof window.scenarioEngine.getDialogueContext === 'function') {
+            engineCtx = window.scenarioEngine.getDialogueContext(npcId) || '';
+          }
+        } catch (_) { /* ignore */ }
+        
+        // 페르소나 기반 시스템 프롬프트.
+        //   기존 대화 system 과 비슷하지만 "첫 인사 한 마디" 만 요구.
+        const greetSystem =
+          `너는 아기자기한 동네 게임의 NPC ${npc.name}다.\n\n` +
+          `너의 정보:\n` +
+          `- 이름: ${npc.name}\n` +
+          `- 직업: ${npc.job}\n` +
+          `- 성격: ${npc.personality}\n` +
+          (npc.speechHabit ? `- 말버릇: "${npc.speechHabit}" (자연스러운 자리에만 살짝 섞어)\n` : '') +
+          `- 호감도: ${npc.affinity}/100\n\n` +
+          (engineCtx ? `\n[배경]\n${engineCtx}\n\n` : '') +
+          `지금 유저(동네 새 친구)와 처음 마주쳤다. ` +
+          `너의 성격과 지금 상황(배경)에 맞춰 자연스러운 첫 인사 한 마디를 건네라.\n\n` +
+          `규칙:\n` +
+          `- 1~3문장. 너무 짧지도 길지도 않게.\n` +
+          `- 너의 직업/말투/감정 상태가 한 자락 비치면 좋음.\n` +
+          `- 인사말 외 부가 설명 금지. 따옴표 없이 본문만.\n` +
+          `- 호감도 낮으면 거리감 있게, 높으면 친근하게.\n` +
+          `- 정형화된 인사말("안녕하세요. 만나서 반갑습니다") 보다는 캐릭터 특유의 톤으로.`;
+        
+        if (typeof callClaude === 'function') {
+          const raw = await callClaude(greetSystem, '첫 인사를 건네줘.', false, { temperature: 0.9 });
+          if (raw && typeof raw === 'string') {
+            // 따옴표/공백 정리
+            greetingText = raw.trim().replace(/^["'「『]|["'」』]$/g, '').trim();
+            // [감정:XXX] 태그가 혹시 끼어 있으면 제거 (이 호출은 감정 태그 안 요청함)
+            greetingText = greetingText.replace(/\s*\[감정:[^\]]*\]\s*$/, '').trim();
+            if (!greetingText) greetingText = fallbackGreeting;
+          }
+        }
+      } catch (err) {
+        console.warn('[openZeta] 첫 인사 AI 호출 실패, 폴백 사용:', err);
+      }
+      
+      // 풍선 텍스트 교체 (대화창이 같은 NPC 로 열려 있는 동안에만)
+      if (zetaCurrentNpcId === npcId && greetMsg.parentElement) {
+        greetMsg.textContent = greetingText;
+        // 감정 카드 삽입 (풍선 바로 앞)
+        const emotion = 'natural';
+        const emotionCard = document.createElement('div');
+        emotionCard.className = 'zeta-emotion-card-inline';
+        // appendInlineEmotionCard 가 messagesEl 끝에 붙이는 구조라 별도 처리 — 풍선 앞에 삽입.
+        try {
+          appendInlineEmotionCard(npcId, emotion, messagesEl);
+          // appendInlineEmotionCard 가 messagesEl 끝에 카드 추가 → 풍선보다 뒤에 옴.
+          // 순서 보정: 카드를 풍선 앞으로 이동.
+          const lastCard = messagesEl.querySelector('.zeta-emotion-card-inline:last-of-type, .zeta-msg-emotion:last-of-type');
+          if (lastCard && lastCard !== greetMsg && greetMsg.parentElement === messagesEl) {
+            messagesEl.insertBefore(lastCard, greetMsg);
+          }
+        } catch (_) { /* ignore */ }
+        state.chatHistory[`_emotion_${npcId}`] = emotion;
+      }
+      
+      // 히스토리에 저장 (이후 대화 맥락에 사용)
+      state.chatHistory[npcId] = [{ role: 'npc', text: greetingText, emotion: 'natural', shown: true }];
+    })();
   } else if (unseenScripted.length > 0) {
     // (b) scripted 메시지가 새로 삽입됨 — 상황 변화 있음.
     // 이전 대화 건수 안내 (scripted 이전까지의 대화 카운트) + scripted 메시지 UI 렌더.
