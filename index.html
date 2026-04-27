@@ -12,13 +12,47 @@
 <div id="canvas-container"></div>
 
 <div id="intro-screen">
+  <!-- [옵션 C] 떠다니는 파스텔 빛 원 — 배경 무드. 클릭 통과(pointer-events:none) -->
+  <div class="intro-bgblob blob-1"></div>
+  <div class="intro-bgblob blob-2"></div>
+  <div class="intro-bgblob blob-3"></div>
+
+  <!-- [옵션 C] 떠다니는 작은 입자 — 꽃잎/별 천천히 회전 부유 -->
+  <div class="intro-particles" aria-hidden="true">
+    <span class="ip" style="--x:8%;  --y:12%; --d:0s;   --r:6s">🌸</span>
+    <span class="ip" style="--x:88%; --y:18%; --d:1.4s; --r:7s">✨</span>
+    <span class="ip" style="--x:14%; --y:78%; --d:0.6s; --r:5.5s">🌼</span>
+    <span class="ip" style="--x:82%; --y:72%; --d:2s;   --r:6.5s">💫</span>
+    <span class="ip" style="--x:50%; --y:6%;  --d:1s;   --r:7s">🍃</span>
+    <span class="ip" style="--x:6%;  --y:48%; --d:2.4s; --r:6s">🌷</span>
+    <span class="ip" style="--x:92%; --y:46%; --d:0.2s; --r:5.5s">⭐</span>
+  </div>
+
   <div class="intro-logo">🏝️</div>
   <div class="intro-title">토킹 아일랜드</div>
   <div class="intro-subtitle">AI 주민들과 함께 만들어가는 나만의 세상</div>
   
   <div class="gacha-box">
+    <!-- [옵션 C] 카드 코너 장식 -->
+    <span class="gacha-corner gacha-corner-tl">🌿</span>
+    <span class="gacha-corner gacha-corner-br">🌸</span>
+
     <div class="gacha-capsule" id="gacha-capsule">🎁</div>
-    <div id="gacha-progress" style="font-size:12px; color:#9c7a5a; margin-bottom:10px">주민 <b id="gacha-count">0</b> / 5명 뽑기</div>
+
+    <!-- [옵션 C] 진행도 도트 — 5개 도트로 뽑은 인원 시각화 + 텍스트 -->
+    <div id="gacha-progress" style="margin-bottom:12px">
+      <div class="gacha-dots" id="gacha-dots">
+        <span class="gacha-dot" data-idx="0"></span>
+        <span class="gacha-dot" data-idx="1"></span>
+        <span class="gacha-dot" data-idx="2"></span>
+        <span class="gacha-dot" data-idx="3"></span>
+        <span class="gacha-dot" data-idx="4"></span>
+      </div>
+      <div style="font-size:12px; color:#9c7a5a; margin-top:6px; text-align:center">
+        주민 <b id="gacha-count">0</b> / 5명 뽑기
+      </div>
+    </div>
+
     <button id="intro-gacha-btn" onclick="window.__introRollGacha && window.__introRollGacha()">🎲 주민 뽑기</button>
     <div class="intro-loading" id="intro-loading">
       <div class="spinner"></div>
