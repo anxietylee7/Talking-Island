@@ -39,6 +39,9 @@ window.__introRollGacha = async function() {
     introDrawIndex = 0;
     introDrawSequence = buildDrawSequence();
     console.log('[intro] sequence built:', introDrawSequence.map(n => n.name).join(','));
+    // [추가] 이전 시도에서 남은 부유 공 초기화 (가챠 다시 시도 케이스).
+    document.querySelectorAll('.intro-particles .npc-floating').forEach(b => b.remove());
+    document.querySelectorAll('.gacha-dot').forEach(d => d.classList.remove('filled'));
   }
   
   btn.disabled = true;
@@ -92,6 +95,38 @@ window.__introRollGacha = async function() {
       if (i < introDrawIndex) dot.classList.add('filled');
       else dot.classList.remove('filled');
     });
+
+    // [추가] 뽑힌 NPC 를 인트로 배경에 떠다니는 공으로 추가 — 꽃잎 입자처럼.
+    //   가챠 카드와는 별개로, 카드를 닫은 뒤에도 화면에 남아 있음.
+    //   5명 다 뽑으면 5개의 공이 부유. 마을 입장 시 인트로 페이드아웃과 함께 사라짐.
+    //   위치: 미리 정의한 슬롯 5개 중 introDrawIndex 번째 사용 (균등 배치).
+    const particles = document.querySelector('.intro-particles');
+    if (particles) {
+      // 슬롯 좌표 — 화면 4모서리 + 중앙 위쪽. 카드 영역(중앙) 피함.
+      const slots = [
+        { x: '12%', y: '20%', d: '0.0s', r: '9s' },
+        { x: '85%', y: '24%', d: '0.4s', r: '10s' },
+        { x: '15%', y: '70%', d: '0.2s', r: '8.5s' },
+        { x: '88%', y: '66%', d: '0.6s', r: '9.5s' },
+        { x: '50%', y: '15%', d: '0.3s', r: '10s' },
+      ];
+      const slot = slots[(introDrawIndex - 1) % slots.length];
+      const ball = document.createElement('div');
+      ball.className = 'npc-floating';
+      ball.style.setProperty('--x', slot.x);
+      ball.style.setProperty('--y', slot.y);
+      ball.style.setProperty('--d', slot.d);
+      ball.style.setProperty('--r', slot.r);
+      // 이미지 있으면 이미지, 없으면 이모지
+      const naturalKey2 = `${newNpc.id}_natural`;
+      const naturalImg2 = (window.PRELOADED_ASSETS || {})[naturalKey2];
+      if (naturalImg2) {
+        ball.innerHTML = `<img src="${naturalImg2}" alt="${newNpc.name}" />`;
+      } else {
+        ball.textContent = newNpc.emoji || '🙂';
+      }
+      particles.appendChild(ball);
+    }
     
     // [가챠 5번째 특수] 5번째면 화면 어둡게 + 캡슐 글로우
     if (isFinal) {
