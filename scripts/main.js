@@ -240,6 +240,10 @@ window.__introRollGacha = async function() {
 window.__enterVillage = async function() {
   console.log('[intro] enter village clicked, npc count:', state.npcs.length);
   
+  // [버그 수정] 5번째 가챠에서 추가된 .gacha-final-spotlight 클래스가 body 에 남아 있으면
+  // 마을 진입 후에도 화면 주변이 어둡게 깔림. 인트로 종료 시점에 강제 제거.
+  document.body.classList.remove('gacha-final-spotlight');
+  
   // 🔧 먼저 GLB 모델 프리로드 (로딩 UI 표시)
   const actions = document.getElementById('gacha-result-actions');
   const loading = document.getElementById('intro-loading');
