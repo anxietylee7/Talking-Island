@@ -207,27 +207,138 @@
   /* === 인트로 화면 === */
   #intro-screen {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;
-    background: linear-gradient(135deg, #fef3e7 0%, #ffe4d4 40%, #fde8ec 100%);
+    /* [옵션 C] 라디얼 그라데이션 — 중앙 밝고 가장자리 살짝 어둑.
+       기존 linear gradient 보다 깊이감 있음. 위에 블롭이 떠다님. */
+    background:
+      radial-gradient(circle at 50% 38%, #fff5e8 0%, #ffe4d4 38%, #fde8ec 70%, #f8d4de 100%);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     padding: 24px; transition: opacity 0.8s;
+    overflow: hidden;
   }
   #intro-screen.fade-out { opacity: 0; pointer-events: none; }
-  
-  .intro-logo { font-size: 72px; margin-bottom: 8px; animation: float 3s ease-in-out infinite; }
-  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+  /* [옵션 C] 떠다니는 큰 빛 원(블롭) — 큰 블러 + 천천히 이동.
+     배경 깊이감 + 따뜻함. pointer-events:none 로 클릭 통과. */
+  .intro-bgblob {
+    position: absolute; border-radius: 50%; filter: blur(60px);
+    pointer-events: none; opacity: 0.55;
+    animation: blob-drift 14s ease-in-out infinite;
+  }
+  .intro-bgblob.blob-1 {
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, #ffcfa8 0%, transparent 70%);
+    top: -60px; left: -60px;
+    animation-delay: 0s;
+  }
+  .intro-bgblob.blob-2 {
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, #ffc0cb 0%, transparent 70%);
+    bottom: -40px; right: -40px;
+    animation-delay: -5s;
+  }
+  .intro-bgblob.blob-3 {
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, #ffe4a8 0%, transparent 70%);
+    top: 40%; right: 10%;
+    animation-delay: -9s;
+    animation-duration: 18s;
+  }
+  @keyframes blob-drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33%      { transform: translate(20px, -30px) scale(1.08); }
+    66%      { transform: translate(-15px, 20px) scale(0.95); }
+  }
+
+  /* [옵션 C] 떠다니는 작은 입자(꽃잎/별) — 천천히 위아래 흔들리며 회전. */
+  .intro-particles {
+    position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  }
+  .intro-particles .ip {
+    position: absolute;
+    left: var(--x); top: var(--y);
+    font-size: 22px; opacity: 0.7;
+    animation: ip-float var(--r, 6s) ease-in-out infinite;
+    animation-delay: var(--d, 0s);
+  }
+  @keyframes ip-float {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    25%      { transform: translate(8px, -12px) rotate(8deg); }
+    50%      { transform: translate(-6px, -18px) rotate(-6deg); }
+    75%      { transform: translate(-10px, -8px) rotate(4deg); }
+  }
+
+  /* 인트로 텍스트/카드는 입자 위에 놓이도록 z-index. */
+  #intro-screen > .intro-logo,
+  #intro-screen > .intro-title,
+  #intro-screen > .intro-subtitle,
+  #intro-screen > .gacha-box { position: relative; z-index: 2; }
+
+  /* [옵션 C] 야자수(로고) sway — 기존 float 위에 살짝 좌우 흔들림. */
+  .intro-logo {
+    font-size: 72px; margin-bottom: 8px;
+    animation: logo-sway 4s ease-in-out infinite;
+    transform-origin: 50% 90%;
+  }
+  @keyframes logo-sway {
+    0%, 100% { transform: translateY(0)    rotate(-3deg); }
+    25%      { transform: translateY(-6px) rotate(2deg); }
+    50%      { transform: translateY(-10px) rotate(-2deg); }
+    75%      { transform: translateY(-6px) rotate(3deg); }
+  }
+  /* 기존 float 키프레임도 다른 곳에서 쓰이므로 유지(위에 별도 정의 있음). */
   
   .intro-title {
     font-size: 28px; font-weight: 800; color: #8b5a2b; margin-bottom: 6px; text-align: center;
+    letter-spacing: 0.5px;
+    text-shadow: 0 2px 8px rgba(255, 255, 255, 0.6);
   }
   .intro-subtitle {
     font-size: 13px; color: #9c7a5a; margin-bottom: 36px; text-align: center; line-height: 1.5;
   }
   
+  /* [옵션 C] 카드 호흡 + 코너 장식 위치를 위해 position:relative 추가. */
   .gacha-box {
-    background: rgba(255,255,255,0.85); backdrop-filter: blur(10px);
+    position: relative;
+    background: rgba(255,255,255,0.88); backdrop-filter: blur(12px);
     border: 3px solid #fff; border-radius: 32px; padding: 32px 28px;
-    box-shadow: 0 12px 40px rgba(196, 69, 54, 0.12);
+    box-shadow: 0 12px 40px rgba(196, 69, 54, 0.14), 0 0 0 1px rgba(255,255,255,0.6) inset;
     text-align: center; max-width: 380px; width: 100%;
+    animation: card-breathe 5s ease-in-out infinite;
+  }
+  @keyframes card-breathe {
+    0%, 100% { transform: scale(1);     box-shadow: 0 12px 40px rgba(196, 69, 54, 0.14), 0 0 0 1px rgba(255,255,255,0.6) inset; }
+    50%      { transform: scale(1.008); box-shadow: 0 16px 48px rgba(196, 69, 54, 0.18), 0 0 0 1px rgba(255,255,255,0.6) inset; }
+  }
+
+  /* [옵션 C] 카드 코너 장식 — 작은 이모지 살짝 회전. */
+  .gacha-corner {
+    position: absolute; font-size: 22px; opacity: 0.85;
+    animation: corner-wiggle 3.5s ease-in-out infinite;
+  }
+  .gacha-corner-tl { top: -10px; left: -8px; transform: rotate(-20deg); animation-delay: 0s; }
+  .gacha-corner-br { bottom: -10px; right: -8px; transform: rotate(15deg); animation-delay: -1.7s; }
+  @keyframes corner-wiggle {
+    0%, 100% { transform: translateY(0)   rotate(var(--initial, 0deg)); }
+    50%      { transform: translateY(-3px) rotate(calc(var(--initial, 0deg) + 8deg)); }
+  }
+  .gacha-corner-tl { --initial: -20deg; }
+  .gacha-corner-br { --initial: 15deg; }
+
+  /* [옵션 C] 진행도 도트 — 5개. 채워진 도트는 색·살짝 큰 사이즈. */
+  .gacha-dots {
+    display: flex; justify-content: center; gap: 8px;
+  }
+  .gacha-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(255, 200, 180, 0.5);
+    border: 1.5px solid rgba(196, 69, 54, 0.15);
+    transition: transform 0.35s, background 0.35s, box-shadow 0.35s;
+  }
+  .gacha-dot.filled {
+    background: linear-gradient(135deg, #ffa76b 0%, #ff7a9c 100%);
+    border-color: transparent;
+    transform: scale(1.25);
+    box-shadow: 0 0 8px rgba(255, 122, 156, 0.5);
   }
   
   .gacha-capsule {
